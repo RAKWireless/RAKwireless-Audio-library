@@ -1,0 +1,148 @@
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+Audio	KEYWORD1
+Audio_Handle	KEYWORD1
+
+CDSpotter	KEYWORD1
+
+DSPG	KEYWORD1
+DSPG_USER	KEYWORD1
+
+NAU85L40B	KEYWORD1
+
+TAS2560 KEYWORD1
+
+TPT29555	KEYWORD1
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+
+Audio    KEYWORD2
+begin    KEYWORD2
+GetBoardId    KEYWORD2
+StoreLicense    KEYWORD2
+GetLicenseAddr    KEYWORD2
+GetLicense    KEYWORD2
+Cyberon_License    KEYWORD2
+
+
+GetMemoryUsage    KEYWORD2
+GetVerInfor    KEYWORD2
+GetSerialNumber    KEYWORD2
+Init    KEYWORD2
+Release    KEYWORD2
+Start    KEYWORD2
+Stop    KEYWORD2
+SetActiveCommandGroup    KEYWORD2
+SetAGC    KEYWORD2
+SetCommandStageProperty    KEYWORD2
+PutRecordData    KEYWORD2
+GetRecordLostCount    KEYWORD2
+DoRecognition    KEYWORD2
+GetRecogResult    KEYWORD2
+GetCommandCount    KEYWORD2
+GetCommand    KEYWORD2
+
+
+ begin    KEYWORD2
+ readCheckSum    KEYWORD2
+ loadFile    KEYWORD2
+ config    KEYWORD2
+ run    KEYWORD2
+ registerConfig    KEYWORD2
+ useCaseConfig    KEYWORD2
+ checkStatus    KEYWORD2
+ getFwVersion    KEYWORD2
+ getChipID    KEYWORD2
+ modelLoad    KEYWORD2
+ spiRegisterWrite    KEYWORD2
+ spiRegisterRead    KEYWORD2
+ spiWrite    KEYWORD2
+ spiRead    KEYWORD2
+ readCheckSumOnly    KEYWORD2
+ calcCheckSum    KEYWORD2
+ loadModelFile    KEYWORD2
+ LoadModel    KEYWORD2
+ eventCallBack    KEYWORD2
+ mode    KEYWORD2
+ ioExpanderInit    KEYWORD2
+ sdCheck    KEYWORD2
+ micCheck    KEYWORD2
+ ampCheck    KEYWORD2
+ dspCheck    KEYWORD2
+ getDspIntState    KEYWORD2
+ getDspReadyState    KEYWORD2
+ setDspResetLow    KEYWORD2
+ setDspResetHigh    KEYWORD2
+ setSpiCsLow    KEYWORD2
+ setSpiCsHigh    KEYWORD2
+ setMicDirection    KEYWORD2
+ readIoState    KEYWORD2
+ echoCommands    KEYWORD2
+ detectedCallback    KEYWORD2
+ eventCallBack    KEYWORD2
+
+
+begin    KEYWORD2
+config    KEYWORD2
+readRegister    KEYWORD2
+writeRegister    KEYWORD2
+
+
+begin    KEYWORD2
+writeRegister8    KEYWORD2
+write    KEYWORD2
+readRegister8    KEYWORD2
+read    KEYWORD2
+transmit_registers    KEYWORD2
+reset    KEYWORD2
+set_pcm_word_length    KEYWORD2
+get_pcm_word_length    KEYWORD2
+set_pcm_channel    KEYWORD2
+get_pcm_channel    KEYWORD2
+set_volume    KEYWORD2
+get_volume    KEYWORD2
+
+set_mute    KEYWORD2
+set_alarm_pin    KEYWORD2
+get_power_status    KEYWORD2
+get_die_temp    KEYWORD2
+get_vbat    KEYWORD2
+set_alarm    KEYWORD2
+get_alarm    KEYWORD2
+set_speaker_load    KEYWORD2
+read_INT_DET1    KEYWORD2
+read_INT_DET2    KEYWORD2
+
+
+begin    KEYWORD2
+scan    KEYWORD2
+pinMode    KEYWORD2
+writeGPIO    KEYWORD2
+digitalWrite    KEYWORD2
+writeAllGPIO    KEYWORD2
+readGPIO    KEYWORD2
+digitalRead    KEYWORD2
+readAllGPIO    KEYWORD2
+readAllPin    KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+#	LITERAL1
+
+m_byaLicense    LITERAL1
+m_nLicenseSize    LITERAL1
+
+MIC_CHANNEL1    LITERAL1
+MIC_CHANNEL2    LITERAL1
+MIC_CHANNEL3    LITERAL1
+MIC_CHANNEL4    LITERAL1
+I2S_SAMPLE_16BIT    LITERAL1
+I2S_SAMPLE_20BIT    LITERAL1
+I2S_SAMPLE_24BIT    LITERAL1
+I2S_SAMPLE_32BIT    LITERAL1
