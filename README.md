@@ -61,6 +61,8 @@ All elements can be used separately or together. However, there are two points n
 
 Please update BSP part to the last version, which will support basic driver.
 
+![](assets/BSP.jpg)
+
 #### Rakwireless Audio library
 
 Then install audio library, which contains other part of driver, like amplifier, DSPG. And includes all examples and solutions.
@@ -98,6 +100,12 @@ No matter which core is used, the examples and solutions are basic same. The tes
   - Record to SD
 
 
+
+#### How to general header from WAV
+
+Please use the python in tool, and put your WAV at the same place, run **python .\WAVconvert.py**
+
+![](assets/python.jpg)
 
 
 
