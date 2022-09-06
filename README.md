@@ -93,11 +93,11 @@ The examples can be separated 4 parts. The test code is just for test and can be
 
   
 
-  ![](../WisBlock Audio/audio-solutions/RAKwireless_Audio_library/assets/FFT-Time-Frequency-View-540.png)
+  ![](assets/FFT-Time-Frequency-View-540.png)
 
   ​		Below is what we get with RAK4631+RAK18032, and of course you can use other wiscore and microphone.
 
-  ![](../WisBlock Audio/audio-solutions/RAKwireless_Audio_library/assets/FFT_square_trend.png)
+  ![](assets/FFT_square_trend.png)
 
 - #### Aduio Alarm
 
