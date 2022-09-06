@@ -18,8 +18,8 @@ short sampleBuffer[BUFFER_SIZE];
 
 int audio_threshold = 2000;
 
-const char *ssid = "YourWIFI";
-const char *password = "YourPassword";
+const char *ssid = "Redmi";
+const char *password = "123456789";
 
 const char* host = "42.193.113.207";  // your server will start a TCP listening
 const char* streamId   = "....................";
