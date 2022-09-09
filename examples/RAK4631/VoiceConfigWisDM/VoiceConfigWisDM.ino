@@ -7,7 +7,7 @@
  * on the serial port after the device is initialized.Saying "Hey RAKstar" to it will wake 
  * it up into voice recognition and the blue and green LEDs on the WisBlock Base board will light up. 
  * You can say other command words to it while the light is on to make it work for you.
- * @note This example requires a core that supports lora.
+ * @note This example requires a core that supports lora. 
  * @version 0.1 
  * @date 2022-08-6   
  * @copyright Copyright (c) 2022
@@ -57,6 +57,7 @@ void setup() {
   //Serial.println("Before PDM init");
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
@@ -299,12 +300,14 @@ void RAK18003Init(void)
 {
   if (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");
+    Serial.println("Did not find RAK18003 IO Expander Chip1,please check!");
+	delay(500);
   }
 
   if (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
+	delay(500);
   }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
@@ -352,5 +355,6 @@ void RAK18003Init(void)
   if (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
   {
     Serial.println("There is no microphone board, please check !");
+	delay(500);
   }
 }

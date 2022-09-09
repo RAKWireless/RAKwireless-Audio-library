@@ -23,8 +23,8 @@ const int sampleRate = 16000; // sample rate in Hz
 // buffer to read samples into, each sample is 16-bits
 short sampleBuffer[BUFFER_SIZE];
 //Alarm threshold
-int audio_threshold = 1000;
-volatile uint8_t alarm_count = 1;
+int audio_threshold = 1000;   //The threshold value of the noise trigger can be modified according to the environmental conditions
+int g_alarm = 0;
 
 int abs_int(short data);
 
@@ -32,6 +32,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);
@@ -42,7 +43,7 @@ void setup()
   Serial.begin(115200);
   while (!Serial)
   {
-    if ((millis() - timeout) < 5000)
+    if ((millis() - timeout) < 3000)
     {
       delay(100);
     }
@@ -58,11 +59,11 @@ void setup()
 
   MIC.begin();
   MIC.config(sampleRate, (MIC_CHANNEL1), I2S_SAMPLE_16BIT); //  |MIC_CHANNEL2
+  delay(500);
   Serial.println("=====================================");
 }
 void loop()
 {
-  
   uint32_t sum = 0;
   // print samples to the serial monitor or plotter
   for (int i = 0; i < BUFFER_SIZE; i++) {
@@ -73,24 +74,17 @@ void loop()
   }
   int aver = sum / BUFFER_SIZE;
   if (aver > audio_threshold)
-  {
-    alarm_count++;
-  }
-
-  if (alarm_count > 2)
-  {
-    alarm_count = 0;
-    Serial.println("Alarm");
+  {    
+    /*You can add your alarm processing tasks here*/
+    g_alarm++;
+    Serial.printf("Alarm %d\r\n",g_alarm);     
     digitalWrite(LED_BLUE, HIGH);
     digitalWrite(LED_GREEN, HIGH);
     delay(1000);
-    /*You can add your alarm processing tasks here*/
-  }
-  else
-  {
     digitalWrite(LED_BLUE, LOW);
-    digitalWrite(LED_GREEN, LOW);
+    digitalWrite(LED_GREEN, LOW);   
   }
+
 }
 int abs_int(short data)
 {

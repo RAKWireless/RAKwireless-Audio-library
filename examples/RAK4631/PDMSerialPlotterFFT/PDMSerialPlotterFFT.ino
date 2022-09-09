@@ -32,10 +32,19 @@ void setup() {
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, HIGH);
 
-  // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
   while (!Serial)
+  {
+    if ((millis() - timeout) < 3000)
+    {
+      delay(100);      
+    }
+    else
+    {
+      break;
+    }
+  }
   
   // configure the data receive callback
   PDM.onReceive(onPDMdata);
@@ -64,7 +73,7 @@ void loop() {
 //       Serial.println(approxBuffer[i]);
     }     
 
-    if(first_flag>0)   //because the all of first IRQ read data is 0
+    if(first_flag>5)   //because the all of first IRQ read data is 0
     {  
       Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency); 
 //      for (int j=0; j<BUFFER_SIZE; j++){
@@ -78,8 +87,11 @@ void loop() {
         Serial.println(print_string[j]);
       }  
       delay(1000);
-    }    
-    first_flag=1;  
+    }  
+	else
+	{
+		first_flag++;	
+	}	    
   }
   
 }

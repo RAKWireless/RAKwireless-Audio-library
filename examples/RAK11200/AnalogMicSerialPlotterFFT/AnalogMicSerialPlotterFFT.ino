@@ -37,10 +37,19 @@ void setup() {
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, HIGH);
 
-  // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
-  while (!Serial);
+  while (!Serial)
+  {
+    if ((millis() - timeout) < 3000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+  }
 
   MIC.begin();
   MIC.config(frequency, (MIC_CHANNEL1 ), I2S_SAMPLE_16BIT); //| MIC_CHANNEL2
@@ -64,16 +73,8 @@ void loop() {
 
     for (int i = 0; i < BUFFER_SIZE; i++)
     {
-      if (channels == 2)
-      {
-        //        Serial.print("L:");
-        //        Serial.print(sampleBuffer[i]);
-        approxBuffer[i] = sampleBuffer[i];
-        //        Serial.print(" R:");
-        i++;
-      }
-      //      Serial.println(sampleBuffer[i]);
       approxBuffer[i] = sampleBuffer[i];
+      //      Serial.println(sampleBuffer[i]);
     }
 
     if (first_flag > 20)  //Discard the first 20 samples data

@@ -160,16 +160,44 @@ The examples can be separated 4 parts. The test code is just for test and can be
   - DSPG
 
     - Music
+    
+       This example use RAK18030/1/2+RAK18003+RAK18060+RAK18080+RAK11200.When say the trigger words wakes up the WisCore then say command words it will print the recognized command and ID number by  serial port.
+       
+       ![](assets/DSPG_play.jpg)
+    
+      
 
 - #### Play & Record
 
-  - Play from SD
+  Because of the limitation of hardware, we only support record/play WAV file via SD card on RAK11200.   
+  
   - Record to SD
-  - Playback
+  
+  - note：This example need use the battery power for WisBase.
+  
+    This example use RAK11200+RAK18003+RAK18030+SD card. And you can modify the parameter, like frequence, channel or date bit.
+  
+    ![](assets/record.png)
+  
+    Then you will find the record file in the SD card.
+  
+    ![](assets/record2.png)
+  
+  - Play from SD
+  
+  This example use RAK11200+RAK18003+RAK18060+Speaker+SD card. And first store the WAV file in SD card and modify the name to "test".
+  
+  ![](assets/play.png)
+  
+  Then download the example and play. It can detect the different format of WAV in the SD card and play "test.wav".
+  
+  ![](assets/play2.png)
+  
+  ![play3](assets/play3.png)
 
+#### How to general header from
 
-
-#### How to general header from WAV
+####  WAV
 
 Please use the python in tool, and put your WAV at the same place, run **python .\WAVconvert.py**
 

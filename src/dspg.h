@@ -6,7 +6,6 @@
 #include "stdio.h"
 #include "stdint.h"
 #include "string.h"
-#include "hex/cyberon_model.h"
 #include "hex/dspg_fw.h"
 #include "hex/sed_model.h"
 #include "dspgreg.h"
@@ -15,17 +14,38 @@
 
 #include "hex/AsrpParams_Melon_Aec_1Mic_1Spk_v393x_T42_P16.h"
 
+
+//The following paths contain voice models
+
+// #include "hex/cyberon_model.h"
+
+#include "hex/Cyberon_RAK_model_G1G2.h"
+#include "hex/Cyberon_RAK_model_G1G3.h"
+#include "hex/Cyberon_RAK_model_G1G4.h"
+#include "hex/Cyberon_RAK_model_G1G5.h"
+
+#define  MAX_MODELS   4   //Number of voice models
+
+#define MODEL_GROUP1    g_lpdwCyberon_RAK_model_G1G2
+#define MODEL_GROUP2    g_lpdwCyberon_RAK_model_G1G3
+#define MODEL_GROUP3    g_lpdwCyberon_RAK_model_G1G4
+#define MODEL_GROUP4    g_lpdwCyberon_RAK_model_G1G5
+
+#define USE_MODEL_GROUP1    1
+#define USE_MODEL_GROUP2    2
+#define USE_MODEL_GROUP3    3
+#define USE_MODEL_GROUP4    4
 /*================================================================*/
 #undef USE_HIBERNATE
-#define USE_FW_READY
+// #define USE_FW_READY
 #undef CUSTOMER_CODE
 #define CUSTOMER_BOARD
-#define ASRP_RECORDING
+// #define ASRP_RECORDING
 #undef BUFFERING_MODE_MIPS_OPTIMIZED
 #undef FW_DEBUG_DISABLE
 #define HOST_BOOT
 
-#define USE_HIGHER_GPIO_AT_3V3		  	1			// 0 - Use Higher GPIO at 1.8 V, 1 - Use Higher GPIO at 3.3 V
+#define USE_HIGHER_GPIO_AT_3V3		  	0   //1			// 0 - Use Higher GPIO at 1.8 V, 1 - Use Higher GPIO at 3.3 V
 #define USE_HIGHER_GPIO					1			// 0 - Only Use GPIO from 0 to 18, 1 - Use GPIO from 0 to 18 with Higher GPIOs 19 to 30
 #define USE_TDM1_ON_HIGHER_GPIO			1
 #define TDM_CONNECT_TO_CODEC        	1     		// 1 = CODEC is connected to D10L, 0 = CODEC is connected to Host
@@ -54,8 +74,8 @@ const uint8_t D10L_CS = SS;
 #define FW_RESET_PIN    WB_IO4
 #define FW_INT_PIN      WB_IO1
 
-#define DSP_LOG_ENABLED     5
-#define DBG_PRINT_CMDLOG	5
+#define DSP_LOG_ENABLED     0
+#define DBG_PRINT_CMDLOG	0
 
 
 typedef enum {
@@ -112,17 +132,16 @@ class DSPG
 public:
     DSPG();
     virtual ~DSPG();
-    int begin(void) ;
+    int begin(const char *lpdwModel,int modelSize);
     void readCheckSum(char *checksum , core_t core);
     void loadFile(const char * file, unsigned long fileLen, core_t core, int skip_bytes);
     int config(void); 
-    void run(void);
+    void run(const char *lpdwModel,int modelSize);
     void registerConfig(void);
     void useCaseConfig(COMMAND *command, int command_sequence_length);
     void checkStatus(void);
     void getFwVersion(void);
-    void getChipID(void);
-    void modelLoad(void);
+    void getChipID(void);  
     void spiRegisterWrite(uint16_t reg, uint8_t *value, int length); 
     void spiRegisterRead(uint16_t reg, uint8_t *data,int length); 
     void spiWrite(char *value, int length);  
@@ -130,9 +149,9 @@ public:
     uint32_t readCheckSumOnly(core_t core);
     uint32_t calcCheckSum(const char * file, unsigned long fileLen, int skip_bytes);
     void loadModelFile(const char * file, unsigned long fileLen, core_t core);
-    void LoadModel(const char * file, unsigned long fileLen, int model_type, int mem_loc, int vt_num, int load_file_type);
-    void eventCallBack(void);
+    void LoadModel(const char * file, unsigned long fileLen, int model_type, int mem_loc, int vt_num, int load_file_type); 
     void mode(DSPG_MODE m);
+    int SetActiveCommandGroup(int nGroupActive);
     bool event = false;
 
     int ioExpanderInit(void);
@@ -140,6 +159,8 @@ public:
     int micCheck(void);
     int ampCheck(void);
     int dspCheck(void);
+    void setSD_CS_High(void);
+    void setSD_CS_Low(void);
     int getDspIntState(void);
     int getDspReadyState(void);
     void setDspResetLow(void);
@@ -149,11 +170,12 @@ public:
     void setMicDirection(uint8_t dir);
     uint16_t readIoState(void);
     void echoCommands(void);
+    void echoCommands(int nGroupChoose);
     void detectedCallback(void(*function)(void));
 
     void eventCallBack(char *command,int *command_id);
-
-
+    void modelLoad(const char *lpdwModel,int modelSize); 
+    
 
 private:
     uint8_t fw_ok;    
@@ -167,8 +189,9 @@ private:
     void dbmdx_write_register(int16_t reg, int16_t val);
     uint32_t dbmdx_read_register_long(core_t core, int16_t reg);
     void dbmdx_write_register_long(core_t core, int16_t reg, int32_t val);
-};
 
+    int g_nActiveCommandsGroup = 1;
+};
 
 
 extern DSPG DSPG_USER;
@@ -181,7 +204,17 @@ extern COMMAND RT_CMD_D10L_evb_vc_1mic_enter2[];
 extern COMMAND RT_CMD_D10L_evb_vc_1mic_exit[];
 extern COMMAND RT_CMD_D10L_evb_production_test_enter[];
 extern COMMAND RT_CMD_D10L_evb_production_test_exit[];
-extern char cyberon_group1_commands[1][30];
-extern char cyberon_group2_commands[40][30];
+
+extern char cyberon_trigger_commands[3][60];
+extern char  g_cyberon_group1_commands[28][60];
+extern char  g_cyberon_group2_commands[17][60];
+extern char  g_cyberon_group3_commands[29][60];
+extern char  g_cyberon_group4_commands[13][60];
+
+#if defined(_VARIANT_RAK11300_) // for RAK11300
+extern  I2S RP2040_I2S; 
+#endif
+
+extern  RAK_SPI  SPI_USER;
 
 #endif

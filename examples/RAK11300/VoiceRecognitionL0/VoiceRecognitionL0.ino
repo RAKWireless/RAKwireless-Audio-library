@@ -1,19 +1,19 @@
 /**
- * @file VoiceRecognitionL0.ino
- * @author rakwireless.com
- * @brief This example shows that use the WisCore and microphone to recognize the specific simple commands.
- * @version 0.1
- * @date 2022-06-6
- * @copyright Copyright (c) 2022
- */
+   @file VoiceRecognitionL0.ino
+   @author rakwireless.com
+   @brief This example shows that use the WisCore and microphone to recognize the specific simple commands.
+   @version 0.1
+   @date 2022-06-6
+   @copyright Copyright (c) 2022
+*/
 #include "audio.h"
 #include <CDSpotter.h>
 #include "RAKwireless_Demo_pack_WithTxt_Lv0.h"
 #define DSPOTTER_MODEL           g_lpdwRAKwireless_Demo_pack_WithTxt_Lv0
-#define	COMMAND_GROUP_CHOOSE	 2
+#define	COMMAND_GROUP_CHOOSE	   1
 #define COMMAND_STAGE_TIMEOUT    6000                    // The minimum recording time in ms when there is no result at command stage.
 #define COMMAND_STAGE_REPEAT     1                       // When it is 1, sample code will recognize repeatly at command stage till to timeout.
-                                                         // Otherwise, it will switch to trigger stage immediately after command recognized.
+// Otherwise, it will switch to trigger stage immediately after command recognized.
 
 // default number of output channels
 static const char channels = 1;
@@ -42,21 +42,21 @@ void setup() {
   //Serial.println("Before PDM init");
   //rp2040
   pinMode(LED_BUILTIN, OUTPUT);
+  time_t timeout = millis();
   Serial.begin(115200);
-  while (!Serial);
- 
-  //For Rak4630
-  //PDM.setPins(21, 4, -1);
-  //PDM.setBufferSize(256);
-  //For Rak4630
-  
+  while (!Serial)
+  {
+    if ((millis() - timeout) < 2000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+  }
   // Configure the data receive callback
   PDM.onReceive(onPDMdata);
-  
-  // Optionally set the gain
-  // Defaults to 20 on the BLE Sense and 24 on the Portenta Vision Shield
-  //For Rak4630 not useful
-  // PDM.setGain(80);
 
   // Initialize PDM with:
   // - one channel (mono mode)
@@ -71,19 +71,19 @@ void setup() {
   g_ptr = Audio_Handle.GetLicenseAddr();
   Serial.println(CDSpotter::GetSerialNumber());
   //DSpotter
-  nMempoolSize = CDSpotter::GetMemoryUsage(DSPOTTER_MODEL,60);
+  nMempoolSize = CDSpotter::GetMemoryUsage(DSPOTTER_MODEL, 60);
   Serial.print("DSpotter mem usage");
   Serial.println(nMempoolSize);
-  pMemPool = (byte*)malloc(sizeof(byte)*nMempoolSize);
-  if(!pMemPool)
+  pMemPool = (byte*)malloc(sizeof(byte) * nMempoolSize);
+  if (!pMemPool)
     Serial.print("allocate DSpotter mempool failed");
   //nErr = g_hDSpotter.Init(g_lpdwLicense,sizeof(g_lpdwLicense),DSPOTTER_MODEL,60,pMemPool,nMempoolSize);
-  nErr = g_hDSpotter.Init(g_ptr,LICEENSE_LENGTH * sizeof(uint32_t),DSPOTTER_MODEL,60,pMemPool,nMempoolSize);
-  if(nErr!=CDSpotter::Success)
+  nErr = g_hDSpotter.Init(g_ptr, LICEENSE_LENGTH * sizeof(uint32_t), DSPOTTER_MODEL, 60, pMemPool, nMempoolSize);
+  if (nErr != CDSpotter::Success)
   {
     Serial.print("DSpotter err: ");
     Serial.println(nErr);
-    if(nErr==CDSpotter::LicenseFailed)
+    if (nErr == CDSpotter::LicenseFailed)
     {
       Serial.println("License err, please check register under device ID for License");
       Serial.println(CDSpotter::GetSerialNumber());
@@ -96,9 +96,9 @@ void setup() {
 
   //Add Set Group model API
   nErr = g_hDSpotter.SetActiveCommandGroup(nActiveCommandGroup);
-  if(nErr!=CDSpotter::Success){
-	Serial.println("Set active commands group failed, using default");
-	nActiveCommandGroup = 1;
+  if (nErr != CDSpotter::Success) {
+    Serial.println("Set active commands group failed, using default");
+    nActiveCommandGroup = 1;
   }
   //show command
   for (int nStage = 0; nStage < 2; nStage++)
@@ -106,17 +106,17 @@ void setup() {
     char szCommand[64];
     int nID;
     int nGroupChoose;
-    if(nStage==0)
-	{
+    if (nStage == 0)
+    {
       Serial.println("The list of Trigger words: ");
-	  nGroupChoose = 0;
-	}
+      nGroupChoose = 0;
+    }
     else
-	{
+    {
       Serial.println("The list of Command words: ");
-	  nGroupChoose = nActiveCommandGroup;
-	}
-    for(int i = 0; i < g_hDSpotter.GetCommandCount(nGroupChoose); i++)
+      nGroupChoose = nActiveCommandGroup;
+    }
+    for (int i = 0; i < g_hDSpotter.GetCommandCount(nGroupChoose); i++)
     {
       g_hDSpotter.GetCommand(nGroupChoose, i, szCommand, sizeof(szCommand), &nID);
       Serial.print(szCommand);
@@ -134,34 +134,34 @@ void setup() {
 }
 
 void loop() {
-  int nRes = -1,nDataSize = 0;
+  int nRes = -1, nDataSize = 0;
   int nFil, nSG, nScore, nID;
   int nStage = 0;
   short sSample[512];
   char pCommand[64];
-  
+
   //Serial.println("loop");
-  
+
   //audio data lost resource not enough to do VR
-//  if(g_hDSpotter.GetRecordLostCount()>0) //need remark this line too
-//    Serial.println("drop data");///LEDblink();
+  //  if(g_hDSpotter.GetRecordLostCount()>0) //need remark this line too
+  //    Serial.println("drop data");///LEDblink();
 
   //Do VR
   nRes = g_hDSpotter.DoRecognition(&nStage);
 
   //VR return Key word get keyword info
-  if(nRes==CDSpotter::Success)
+  if (nRes == CDSpotter::Success)
   {
-	if(g_nBlink)
-	{
-		digitalWrite(LED_BUILTIN, LOW);
-		g_nBlink = 0;
-	}
-	else
-	{
-		digitalWrite(LED_BUILTIN, HIGH);
-		g_nBlink = 1;
-	}
+    if (g_nBlink)
+    {
+      digitalWrite(LED_BUILTIN, LOW);
+      g_nBlink = 0;
+    }
+    else
+    {
+      digitalWrite(LED_BUILTIN, HIGH);
+      g_nBlink = 1;
+    }
     Serial.print("Detect ID: ");
     g_hDSpotter.GetRecogResult(&nID, pCommand, sizeof(pCommand), &nScore, &nSG, &nFil);
     Serial.print(pCommand);
@@ -175,17 +175,17 @@ void loop() {
     Serial.println(nScore);
   }
   //Check VR stage
-  if(nStage != g_nCurrentStage)
+  if (nStage != g_nCurrentStage)
   {
     g_nCurrentStage  = nStage;
-    if(nStage == CDSpotter::TriggerStage)
+    if (nStage == CDSpotter::TriggerStage)
       Serial.println("VR Switch to Trigger Stage");
-    else if(nStage == CDSpotter::CommandStage)
+    else if (nStage == CDSpotter::CommandStage)
       Serial.println("VR Switch to Command Stage");
   }
   // Clear the read count
   samplesRead = 0;
-  
+
 }
 
 /**
@@ -197,15 +197,15 @@ void onPDMdata() {
   // Query the number of available bytes
   int nLeftRBBufferSize;
   //int bytesAvailable = PDM.available();
-  
+
   //Serial.println(bytesAvailable);
   //delay(1000);
   // Read into the sample buffer
-  PDM.read(sampleBuffer, SAMPLE_READ_NUM*2);
+  PDM.read(sampleBuffer, SAMPLE_READ_NUM * 2);
 
   // 16-bit, 2 bytes per sample
   //samplesRead = bytesAvailable / 2;
   //put to Ringbuffer and wait for do VR
   g_hDSpotter.PutRecordData(sampleBuffer, SAMPLE_READ_NUM);
-  
+
 }

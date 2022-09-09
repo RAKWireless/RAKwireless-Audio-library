@@ -5,6 +5,7 @@
  * and sampling depth of 16 bits.
  * @How to convert WAV file to HEX format .h file can use the online tool in the link.
  * https://tomeko.net/online_tools/file_to_hex.php?lang=en
+ * @note This example need use the battery power for WisBase.
  * @version 0.1
  * @date 2022-06-20
  * @copyright Copyright (c) 2022
@@ -51,14 +52,16 @@ void setup()
   } 
   
   Serial.println("=====================================");  
-  if(!AMP_Left.begin(AMP_LEFT_ADDRESS))
+  while(!AMP_Left.begin(AMP_LEFT_ADDRESS))
   {
-    Serial.printf("TAS2560 left init failed\r\n");
+    Serial.printf("TAS2560 left init failed,please check RAK18040\r\n");
+    delay(500);
   }
  
-  if(!AMP_Right.begin(AMP_RIGTT_ADDRESS))
+  while(!AMP_Right.begin(AMP_RIGTT_ADDRESS))
   {
-    Serial.printf("TAS2560 rigth init failed\r\n");
+    Serial.printf("TAS2560 rigth init failed,please check RAK18040\r\n");
+    delay(500);
   } 
 
   AMP_Left.set_pcm_channel(LeftMode);

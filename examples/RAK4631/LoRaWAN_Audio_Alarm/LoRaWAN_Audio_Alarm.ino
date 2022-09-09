@@ -32,7 +32,7 @@ int channels = 1;   //1 mmono , 2 stereo
 short sampleBuffer[BUFFER_SIZE] = {0};
 volatile uint8_t read_flag = 0;
 //Alarm threshold
-int audio_threshold = 2500; //You can modify this value to your desired noise trigger threshold.
+int audio_threshold = 1000; //You can modify this value to your desired noise trigger threshold.
 int sendflag= 0;
 
 bool doOTAA = true;   // OTAA is used by default.
@@ -91,6 +91,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT); 
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);
@@ -216,6 +217,7 @@ void setup()
     Serial.println("Failed to start PDM!");
     while (1) yield();
   }  
+  delay(500);
 }
 
 void loop()
@@ -235,10 +237,12 @@ void loop()
       digitalWrite(LED_GREEN, HIGH);
       TimerSetValue(&ledTimer, 2000);
       TimerStart(&ledTimer);
+			Serial.println("Alarm");
      if(sendflag == 0)
      {
         sendflag = 1;  
-        Serial.println("Alarm");
+        TimerSetValue(&appTimer, 10000);
+        TimerStart(&appTimer);
         if(join_flag == 1)
         {
           send_lora_frame();

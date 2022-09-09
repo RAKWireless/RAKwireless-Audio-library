@@ -2,8 +2,9 @@
    @file PlayBackFromSD.ino
    @author rakwireless.com
    @brief This example shows how to play WAV audio files from SD card.
+   @note This example need use the RAK18060 module. And use the battery power for WisBase.
    @version 0.1
-   @date 2022-8-4
+   @date 2022-08-04
    @copyright Copyright (c) 2022
 **/
 #include "Arduino.h"
@@ -20,7 +21,7 @@ TPT29555   Expander2(0x25);
 TAS2560 AMP_Left;
 TAS2560 AMP_Right;
 
-File            audiofile;    
+File            audiofile;
 static uint32_t f_startPos = 44;  //audio data start position
 static uint32_t f_readPos = 0;    //read audio data position
 static uint32_t f_endPos = 0;     //audio data end position
@@ -30,7 +31,7 @@ uint8_t play_flag = 0;
 #define WAV_HEAD_LEN 320
 typedef struct wavhead_s
 {
-  /*RIFF块*/
+  /*RIFF chunk*/
   char RIFF_BUF[4];       //（RIFF）  0x46464952
   uint32_t wavFileLen;    //Data size, including header size and audio file size (total file size - 8)
   /*Format Chunk*/
@@ -42,7 +43,7 @@ typedef struct wavhead_s
   uint32_t bytePerSecond;    //data volume per second
   uint16_t doubleBitsPerSample;    //
   uint16_t singleBitsPerSample;   //
-  char DATA_BUF[4];          //"data"    
+  char DATA_BUF[4];          //"data"
   uint32_t audioDataSize;   //size of audio data
   float playTime;
   uint32_t fileSize;
@@ -68,11 +69,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
-  pinMode(LED_GREEN, OUTPUT);
-  digitalWrite(LED_GREEN, HIGH);
-  pinMode(LED_BLUE, OUTPUT);
-  digitalWrite(LED_BLUE, HIGH);
-
+  delay(500);
   // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
@@ -87,25 +84,28 @@ void setup()
       break;
     }
   }
-
+  pinMode(LED_GREEN, OUTPUT);
+  digitalWrite(LED_GREEN, HIGH);
+  pinMode(LED_BLUE, OUTPUT);
+  digitalWrite(LED_BLUE, HIGH);
   Serial.println("=========RAK11200 audio Test========");
   RAK18003Init();
   AMP_init();
   SD_init();
-  Serial.println("=====================================");  
+  Serial.println("=====================================");
 }
 
 void loop()
-{ 
+{
   play_wav("test.wav"); //play test.wav
-  while(1); //If you need to repeat playback, you can comment out this line.
+  while (1); //If you need to repeat playback, you can comment out this line.
 }
 void play_task(void)
 {
   uint8_t sound_buff[4] = {0};
   uint32_t data = 0;
   SD_CS_low();  //enable the SPI
-  delay(10);  
+  delay(10);
   audiofile.seek(f_startPos);
   f_readPos = f_startPos;
   memset(sound_buff, 0, sizeof(sound_buff));
@@ -121,18 +121,20 @@ void play_task(void)
   I2S.end();
   audiofile.close();
   Serial.println("stop play");
-//  while (1);
+  //  while (1);
 }
 void AMP_init(void)
 {
   if (!AMP_Left.begin(AMP_LEFT_ADDRESS))
   {
     Serial.printf("TAS2560 left init failed\r\n");
+    delay(500);
   }
 
   if (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
   {
     Serial.printf("TAS2560 rigth init failed\r\n");
+    delay(500);
   }
 
   AMP_Left.set_pcm_channel(LeftMode);
@@ -154,7 +156,7 @@ void RAK18003Init(void)
 {
   while (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");
+    Serial.println("Did not find RAK18003 IO Expander Chip1,please check!");
     digitalWrite(LED_BLUE, HIGH);
     digitalWrite(LED_GREEN, HIGH);
     delay(200);
@@ -165,7 +167,7 @@ void RAK18003Init(void)
 
   while (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
     digitalWrite(LED_BLUE, HIGH);
     digitalWrite(LED_GREEN, HIGH);
     delay(200);
@@ -208,6 +210,18 @@ void RAK18003Init(void)
   Expander2.pinMode(15, OUTPUT); //not use
 
   Expander2.digitalWrite(3, 0);   //set the PDM data direction from MIC to WisCore
+
+  while (Expander1.digitalRead(4) == 0) //Check if the RAK18060 AMP board is connected on the RAK18003
+  {
+    Serial.println("There is no RAK18060 AMP board, please check !");
+    delay(200);
+  }
+
+  while (Expander1.digitalRead(0) == 1) //Check SD card
+  {
+    Serial.println("There is no SD card on the RAK18003 board, please check !");
+    delay(200);
+  }
 }
 void SD_CS_high()
 {
@@ -261,7 +275,7 @@ void read_file_header(uint8_t *wav_head, struct wavhead_s *a)
   ntemp = (ntemp << 8) | wav_head[5];
   ntemp = (ntemp << 8) | wav_head[4];
   a->wavFileLen = ntemp;
-  f_endPos = ntemp + 8;    
+  f_endPos = ntemp + 8;
   a->fileSize = ntemp + 8;
   Serial.printf("wavFileLen = %d\n", a->wavFileLen);
 
@@ -283,7 +297,7 @@ void read_file_header(uint8_t *wav_head, struct wavhead_s *a)
   a->fmtLen = ntemp;
   Serial.printf("fmtLen = %d\n", a->fmtLen);
 
-  //1:PCM 6:G711A 7:G711U 
+  //1:PCM 6:G711A 7:G711U
   a->code = (wav_head[21] & 0xFF);
   a->code = (a->code << 8) | wav_head[20];
   Serial.printf("code = %d\n", a->code);
@@ -293,8 +307,8 @@ void read_file_header(uint8_t *wav_head, struct wavhead_s *a)
   a->channels = (a->channels << 8) | wav_head[22];
   Serial.printf("channels = %d\n", a->channels);
 
-  /*Sample rate For example: 8000 16000 44100 The sample rate (samples per second) 
-   indicates the playback speed of each channel */
+  /*Sample rate For example: 8000 16000 44100 The sample rate (samples per second)
+    indicates the playback speed of each channel */
   ntemp = 0;
   ntemp = wav_head[27] & 0xff;
   ntemp = (ntemp << 8) | wav_head[26];
@@ -303,7 +317,7 @@ void read_file_header(uint8_t *wav_head, struct wavhead_s *a)
   a->sampleRate = ntemp;
   Serial.printf("sampleRate = %d\n", a->sampleRate);
 
-  //The amount of audio data per second = sample rate * number of channels * number of samples / 8  
+  //The amount of audio data per second = sample rate * number of channels * number of samples / 8
   ntemp = 0;
   ntemp = wav_head[31] & 0xff;
   ntemp = (ntemp << 8) | wav_head[30];
@@ -326,9 +340,9 @@ void read_file_header(uint8_t *wav_head, struct wavhead_s *a)
   {
     if ((wav_head[data_pos] == 'd') && (wav_head[data_pos + 1] == 'a') && (wav_head[data_pos + 2] == 't') && (wav_head[data_pos + 3] == 'a'))
     {
-      f_startPos = data_pos + 8;   
-      f_readPos = f_startPos;       
-      audiofile.seek(f_startPos); 
+      f_startPos = data_pos + 8;
+      f_readPos = f_startPos;
+      audiofile.seek(f_startPos);
       Serial.printf("data block position:%d\r\n", f_startPos);
       break;
     }
@@ -347,7 +361,7 @@ void read_file_header(uint8_t *wav_head, struct wavhead_s *a)
   ntemp = (ntemp << 8) | wav_head[data_pos + 3];
   ntemp = (ntemp << 8) | wav_head[data_pos + 2];
   ntemp = (ntemp << 8) | wav_head[data_pos + 1];
-  a->audioDataSize = ntemp;  
+  a->audioDataSize = ntemp;
   Serial.printf("audioDataSize = %d\n", a->audioDataSize);
   a->playTime = (double)(a->audioDataSize) / (a->bytePerSecond);
   Serial.printf("audio play time = %3.3f S\r\n", a->playTime);
@@ -449,13 +463,13 @@ void play_wav(const char* file)
     {
       get_flie_info();
       I2S.setSampleBit(g_wav_head.singleBitsPerSample);
-      I2S.begin(g_wav_head.channels, g_wav_head.sampleRate); 
+      I2S.begin(g_wav_head.channels, g_wav_head.sampleRate);
       play_task();
     }
     else
     {
       SD_CS_high(); //disable the SPI CS
       Serial.println("fail to open the file");
-    }      
+    }
   }
 }

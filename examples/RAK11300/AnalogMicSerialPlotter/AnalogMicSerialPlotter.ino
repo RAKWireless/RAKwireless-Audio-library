@@ -60,7 +60,7 @@ void loop() {
 
   int32_t value;
   int16_t leftChannel;
-  i2s.read(&value,true);
-  leftChannel = (int16_t)(value>>16)&0xFFFF;
+  i2s.read(&value, true);
+  leftChannel = (int16_t)(value >> 16) & 0xFFFF;
   Serial.println((int16_t)leftChannel);
 }

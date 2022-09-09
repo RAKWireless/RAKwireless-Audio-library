@@ -8,7 +8,7 @@
    @note This example requires a microphone that supports high frequencies and requires the use of the RAK18003 module.
    @version 0.1
    @date 2022-06-10
-   @copyright Copyright (c) 2020
+   @copyright Copyright (c) 2022
 */
 #include <Arduino.h>
 #include <LoRaWan-RAK4630.h> //http://librarymanager/All#SX126x
@@ -23,7 +23,7 @@ int channels = 1;
 short sampleBuffer[BUFFER_SIZE] = {0};
 volatile uint8_t read_flag = 0;
 //Alarm threshold
-int audio_threshold = 8000;
+int audio_threshold = 800;
 int sendflag = 0;
 
 bool doOTAA = true;   // OTAA is used by default.
@@ -84,6 +84,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);
@@ -211,6 +212,7 @@ void setup()
     Serial.println("Failed to start PDM!");
     while (1) yield();
   }
+  delay(500);
 }
 
 void loop()
@@ -230,10 +232,12 @@ void loop()
       digitalWrite(LED_GREEN, HIGH);
       TimerSetValue(&ledTimer, 2000);
       TimerStart(&ledTimer);
+			Serial.println("Alarm");
       if (sendflag == 0)
       {
         sendflag = 1;
-        Serial.println("Alarm");
+        TimerSetValue(&appTimer, 10000);
+        TimerStart(&appTimer);
         if (join_flag == 1)
         {
           send_lora_frame();
@@ -362,15 +366,15 @@ void onPDMdata() {
 }
 void RAK18003Init(void)
 {
-  if(!Expander1.begin())
+  if (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");   
+    Serial.println("Did not find IO Expander Chip1");
   }
 
-  if(!Expander2.begin())
+  if (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");      
-  }  
+    Serial.println("Did not find IO Expander Chip2");
+  }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
   Expander1.pinMode(2, INPUT);    //MIC CTR1
@@ -380,7 +384,7 @@ void RAK18003Init(void)
   Expander1.pinMode(6, INPUT);    //AMP CTR2
   Expander1.pinMode(7, INPUT);    //AMP CTR3
   Expander1.pinMode(8, INPUT);    //DSP check
-  Expander1.pinMode(9, INPUT);    //DSP CTR1  DSP int 
+  Expander1.pinMode(9, INPUT);    //DSP CTR1  DSP int
   Expander1.pinMode(10, INPUT);   //DSP CTR2  DSP ready
   Expander1.pinMode(11, OUTPUT);  //DSP CTR3  DSP reset
   Expander1.pinMode(12, INPUT);   //DSP CTR4  not use
@@ -388,11 +392,11 @@ void RAK18003Init(void)
   Expander1.pinMode(14, INPUT);   //NOT USE
   Expander1.pinMode(15, INPUT);   //NOT USE
 
-//  Expander1.digitalWrite(14, 0);    //set chip 1 not use pin output low
-//  Expander1.digitalWrite(15, 0);    //set chip 1 not use pin output low
-    
+  //  Expander1.digitalWrite(14, 0);    //set chip 1 not use pin output low
+  //  Expander1.digitalWrite(15, 0);    //set chip 1 not use pin output low
+
   Expander2.pinMode(0, OUTPUT);  //CORE  SPI CS1 for DSPG CS
-  Expander2.pinMode(1, OUTPUT);  //CORE  SPI CS2   
+  Expander2.pinMode(1, OUTPUT);  //CORE  SPI CS2
   Expander2.pinMode(2, OUTPUT);  //CORE  SPI CS3
   Expander2.pinMode(3, OUTPUT);  //PDM switch CTR    1 to dsp   0 to core
   Expander2.pinMode(4, INPUT);  //not use
@@ -406,32 +410,32 @@ void RAK18003Init(void)
   Expander2.pinMode(12, INPUT); //not use
   Expander2.pinMode(13, INPUT); //not use
   Expander2.pinMode(14, INPUT); //not use
-  Expander2.pinMode(15, INPUT); //not use 
+  Expander2.pinMode(15, INPUT); //not use
 
-  Expander2.digitalWrite(0, 1);  //set SPI CS1 High 
-  Expander2.digitalWrite(1, 1);  //set SPI CS2 High  
+  Expander2.digitalWrite(0, 1);  //set SPI CS1 High
+  Expander2.digitalWrite(1, 1);  //set SPI CS2 High
   Expander2.digitalWrite(2, 1);  //set SPI CS3 High
-  
-  Expander2.digitalWrite(3,0);    //set the PDM data direction from MIC to WisCore
+
+  Expander2.digitalWrite(3, 0);   //set the PDM data direction from MIC to WisCore
 
   // if(Expander1.digitalRead(0) == 1)  //Check SD card
   // {
-  //   Serial.println("There is no SD card on the RAK18003 board, please check !");     
+  //   Serial.println("There is no SD card on the RAK18003 board, please check !");
   // }
-  
-  if(Expander1.digitalRead(1) == 0)  //Check if the microphone board is connected on the RAK18003
+
+  if (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
   {
-    Serial.println("There is no microphone board, please check !");     
+    Serial.println("There is no microphone board, please check !");
   }
 
   // if(Expander1.digitalRead(4) == 0)  //Check if the RAK18060 AMP board is connected on the RAK18003
   // {
-  //   Serial.println("There is no RAK18060 AMP board, please check !");     
+  //   Serial.println("There is no RAK18060 AMP board, please check !");
   // }
 
   // if(Expander1.digitalRead(8) == 0)  //Check if the RAK18080 DSPG board is connected on the RAK18003
   // {
-  //   Serial.println("There is no RAK18080 DSPG board, please check !");     
+  //   Serial.println("There is no RAK18080 DSPG board, please check !");
   // }
-  
+
 }

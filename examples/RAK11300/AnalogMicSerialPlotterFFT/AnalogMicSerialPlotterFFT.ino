@@ -32,15 +32,25 @@ void setup() {
 
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, HIGH);
 
-  // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
-  while (!Serial);
+  while (!Serial)
+  {
+    if ((millis() - timeout) < 5000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+  }
 
   i2s.setDATA(pDIN);
   i2s.setBitsPerSample(16);
@@ -50,7 +60,7 @@ void setup() {
   MIC.begin();
   MIC.config(sampleRate, (MIC_CHANNEL1), I2S_SAMPLE_16BIT); //  |MIC_CHANNEL2
 
-  uint8_t discardCount = 20;
+  uint8_t discardCount = 10;
   while (discardCount--)
   {
     for (int i = 0; i < 256; i++)

@@ -12,10 +12,18 @@
    @copyright Copyright (c) 2022
 */
 #include "audio.h"
-#include <Arduino.h>
-#include <LoRaWan-RAK4630.h> //http://librarymanager/All#SX126x
-#include <SPI.h>
 #include <PDM.h>
+#include <Arduino.h>
+#include "LoRaWan-Arduino.h" //http://librarymanager/All#SX126x
+#include <SPI.h>
+
+#include <stdio.h>
+
+#include "mbed.h"
+#include "rtos.h"
+
+using namespace std::chrono_literals;
+using namespace std::chrono;
 
 // GPIO pin numbers
 #define pDIN 21
@@ -60,9 +68,9 @@ static lmh_callback_t g_lora_callbacks = {BoardGetBatteryLevel, BoardGetUniqueId
                                           lorawan_unconfirm_txdone_handler, lorawan_confirm_txdone_handler
                                          };
 //OTAA keys !!!! KEYS ARE MSB !!!!
-uint8_t nodeDeviceEUI[8] = {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x33, 0x66};
-uint8_t nodeAppEUI[8] = {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x33, 0x66};
-uint8_t nodeAppKey[16] = {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x66};
+uint8_t nodeDeviceEUI[8] = {0x12, 0x88, 0x12, 0x88, 0x44, 0x12, 0x33, 0x66};
+uint8_t nodeAppEUI[8] = {0xB8, 0x27, 0xEB, 0xFF, 0xFE, 0x39, 0x00, 0x00};
+uint8_t nodeAppKey[16] = {0x12, 0x21, 0x12, 0x21, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x44, 0x44, 0x44, 0x44};
 
 // ABP keys
 uint32_t nodeDevAddr = 0x260116F8;
@@ -71,16 +79,17 @@ uint8_t nodeAppsKey[16] = {0xFB, 0xAC, 0xB6, 0x47, 0xF3, 0x58, 0x45, 0xC7, 0x50,
 
 // Private defination
 #define LORAWAN_APP_DATA_BUFF_SIZE 64                     /**< buffer size of the data to be transmitted. */
-#define LORAWAN_APP_INTERVAL 6000                        /**< Defines for user timer, the application data transmission interval. 10s, value in [ms]. */
+#define LORAWAN_APP_INTERVAL 10000                        /**< Defines for user timer, the application data transmission interval. 10s, value in [ms]. */
 static uint8_t m_lora_app_data_buffer[LORAWAN_APP_DATA_BUFF_SIZE];            //< Lora user application data buffer.
 static lmh_app_data_t m_lora_app_data = {m_lora_app_data_buffer, 0, 0, 0, 0}; //< Lora user application data structure.
 
 int join_flag = 0;
-TimerEvent_t appTimer;
 TimerEvent_t ledTimer;
-
 void led_off_timer_handler(void);
-static uint32_t timers_init(void);
+
+mbed::Ticker appTimer;
+void tx_lora_periodic_handler(void);
+
 static uint32_t count = 0;
 static uint32_t count_fail = 0;
 int abs_int(short data);
@@ -167,15 +176,7 @@ void setup()
   }
   Serial.println("=====================================");
 
-  //creat a user timer to send data to server period
-  uint32_t err_code;
-  err_code = timers_init();
-  if (err_code != 0)
-  {
-    Serial.printf("timers_init failed - %d\n", err_code);
-    return;
-  }
-  TimerInit(&ledTimer, led_off_timer_handler);
+
   // Setup the EUIs and Keys
   if (doOTAA)
   {
@@ -191,7 +192,7 @@ void setup()
   }
 
   // Initialize LoRaWan
-  err_code = lmh_init(&g_lora_callbacks, g_lora_param_init, doOTAA, g_CurrentClass, g_CurrentRegion);
+  uint32_t err_code = lmh_init(&g_lora_callbacks, g_lora_param_init, doOTAA, g_CurrentClass, g_CurrentRegion);
   if (err_code != 0)
   {
     Serial.printf("lmh_init failed - %d\n", err_code);
@@ -209,6 +210,8 @@ void setup()
   MIC.begin();
   MIC.config(sampleRate, (MIC_CHANNEL1), I2S_SAMPLE_16BIT); //  |MIC_CHANNEL2
   delay(200);
+  TimerInit(&ledTimer, led_off_timer_handler);
+
   Serial.println("=====================================");
 }
 void loop()
@@ -233,10 +236,14 @@ void loop()
     TimerStart(&ledTimer);
     if (sendflag == 0)
     {
+      Serial.println("sendflag");
       sendflag = 1;
       if (join_flag == 1)
       {
-        send_lora_frame();
+        join_flag = 1;
+        delay(1000);
+        // Start the application timer. Time has to be in microseconds
+        appTimer.attach(tx_lora_periodic_handler, (std::chrono::microseconds)(LORAWAN_APP_INTERVAL * 1000));
       }
     }
   }
@@ -263,9 +270,9 @@ void lorawan_has_joined_handler(void)
   if (ret == LMH_SUCCESS)
   {
     join_flag = 1;
-    //    delay(1000);
-    //    TimerSetValue(&appTimer, LORAWAN_APP_INTERVAL);
-    //    TimerStart(&appTimer);
+    delay(1000);
+    // Start the application timer. Time has to be in microseconds
+    appTimer.attach(tx_lora_periodic_handler, (std::chrono::microseconds)(LORAWAN_APP_INTERVAL * 1000));
   }
 }
 /**@brief LoRa function for handling OTAA join failed
@@ -344,19 +351,7 @@ void led_off_timer_handler(void)
 */
 void tx_lora_periodic_handler(void)
 {
-  //  TimerSetValue(&appTimer, LORAWAN_APP_INTERVAL);
-  //  TimerStart(&appTimer);
-  //  Serial.println("Sending frame now...");
-  //  send_lora_frame();
+  appTimer.attach(tx_lora_periodic_handler, (std::chrono::microseconds)(LORAWAN_APP_INTERVAL * 1000));
+  // This is a timer interrupt, do not do lengthy things here. Signal the loop() instead
   sendflag = 0;
-}
-
-/**@brief Function for the Timer initialization.
-
-   @details Initializes the timer module. This creates and starts application timers.
-*/
-uint32_t timers_init(void)
-{
-  TimerInit(&appTimer, tx_lora_periodic_handler);
-  return 0;
 }

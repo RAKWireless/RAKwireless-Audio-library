@@ -184,7 +184,7 @@ COMMAND RT_CMD_D10L_evb_bargein_1mic_enter[]=
 #endif
 	0x304, 0x3811	 , VAL_SHORT,
 	0x305, 0x21f6	 , VAL_SHORT,	//For Cyberon, Wake word and 500ms history time are both required
-	0x304, 0x5810	 , VAL_SHORT,
+	// 0x304, 0x5810	 , VAL_SHORT,		//Enable VT2 for SED	2022.09.06
 	0x038, 0x003a	 , VAL_SHORT,
 	0x10a, 0x0000	 , VAL_SHORT,
 	0x10b, 0x059f	 , VAL_SHORT,	//ASRP Tx Output increased by 15 dB
@@ -211,6 +211,8 @@ COMMAND RT_CMD_D10L_evb_bargein_1mic_enter[]=
 #endif
 	0x031, 0x0904	 , VAL_SHORT,
 };
+
+
 int RT_CMD_D10L_evb_bargein_1mic_enter_length = sizeof(RT_CMD_D10L_evb_bargein_1mic_enter)/sizeof(RT_CMD_D10L_evb_bargein_1mic_enter[0]);
 
 
@@ -441,51 +443,134 @@ COMMAND RT_CMD_D10L_evb_production_test_exit[]=
 	0x010 ,0x1013000 , VAL_LONG,   	//TL3 frequency = 110.592 MHz
 };
 
-char cyberon_group1_commands[1][30] = 
-{
-		"Hi DSPG"
-};
 
-char cyberon_group2_commands[40][30] =
+char cyberon_trigger_commands[3][60] = 
 {
-		"Start Cooking",
-		"Pause Cooking",
-		"Start Defrost",
-		"Pause Defrost",
-		"Open The Door",
-		"Open The Door",
-		"Open The Door",
-		"Open The Door",
-		"Smart Sensor Menu",
-		"Remind Me One Hour Later",
-		"Remind Me One Hour Later",
-		"Remind Me One Hour Later",
-		"Remind Me One Hour Later",
-		"Remind Me Two Hours Later",
-		"Remind Me Two Hours Later",
-		"Set Power Maximum",
-		"Set Power Medium",
-		"Set Power Minimum",
-		"Microwave Popcorn",
-		"Microwave Popcorn",
-		"Melt Butter",
-		"Melt Chocolate",
-		"Soften Ice Cream",
-		"Soften Ice Cream",
-		"Soften Cream Cheese",
-		"Soften Cream Cheese",
-		"Auto Cook Mode",
-		"Defrost Mode",
-		"Reheat Mode",
-		"Smart Sensor Mode",
-		"Power Save Mode",
-		"Combination Mode",
-		"Cook Beef Rare",
-		"Cook Beef Medium",
-		"Cook Beef Well Done",
-		"Cook Pasta",
-		"Cook Lamb Roast",
-		"Cook Chicken",
-		"Cook Potato",
-		"Please Help Me",
+	"Hey RAK Star",
+	"Hey Helium",
+	"Hey RAK Cloud"
+};
+char g_cyberon_group1_commands[28][60] = 
+{
+	"Play Music",			//0
+	"Play Music",			//1	
+	"Play Music",			//2
+	"Play Music",			//3
+
+	"Stop Music",			//4
+	"Stop Music",			//5
+	"Stop Music",			//6
+	"Stop Music",			//7
+
+	"Previous Song",		//8
+
+	"Next song",			//9
+	"Next song",			//10
+
+	"Volume Up",			//11	
+	"Volume Down",			//12
+	"Stop",					//13
+	"Pause",				//14
+
+	"Next",					//15
+	"Next",					//16
+
+	"Resume",				//17
+	"Resume",				//18
+	"Resume",				//19
+	"Resume",				//20
+	"Resume",				//21
+
+	"Previous",				//22
+
+	"Volume Up",			//23
+	"Volume Down",			//24
+
+	"Increase Volume",		//25
+
+	"Decrease Volume",		//26
+	"Decrease Volume"		//27
+};
+char g_cyberon_group2_commands[17][60] = 
+{
+	"Turn Lights on",		//0
+	"Turn Lights on",		//1
+
+	"Turn Lights off",		//2
+
+	"Lights on" ,			//3
+	"Lights on" ,			//4
+
+	"Lights off" ,			//5
+	"Turn lights up",		//6
+	"Turn lights down",		//7
+	"Dim lights",			//8
+	"Brighten lights",		//9
+	"Lights Red",			//10
+	"Lights Blue",			//11
+	"Lights Green",			//12
+	"Lights Yellow",		//13
+
+	"Lights Orange",		//14
+	"Lights Orange",		//15
+
+	"Lights Pink"			//16
+};
+char g_cyberon_group3_commands[29][60] = 
+{
+	"What is today's HNT?",								//0
+	"What is today's HNT?",								//1
+	"What is today's HNT?",								//2
+	"What is today's HNT?",								//3
+
+	"How many hotspots are deployed today?",			//4
+	"How many hotspots are deployed today?",			//5
+	"How many hotspots are deployed today?",			//6
+	"How many hotspots are deployed today?",			//7
+
+	"Which countries have Helium hotspots deployed?",	//8
+	"Which countries have Helium hotspots deployed?",	//9
+
+	"What is the price of HNT today?",					//10
+	"What is the price of HNT today?",					//11
+	"What is the price of HNT today?",					//12
+	"What is the price of HNT today?",					//13
+	"What is the price of HNT today?",					//14
+	"What is the price of HNT today?",					//15
+	"What is the price of HNT today?",					//16
+	"What is the price of HNT today?",					//17
+
+	"What are the latest people's network updates?",	//18
+	"What are the latest people's network updates?",	//19
+	"What are the latest people's network updates?",	//20
+	"What are the latest people's network updates?",	//21
+	"What are the latest people's network updates?",	//22
+	"What are the latest people's network updates?",	//23
+	"What are the latest people's network updates?",	//24
+	"What are the latest people's network updates?",	//25
+
+	"Is there Helium coverage",							//26
+	"Is there Helium coverage",							//27
+	"Is there Helium coverage"							//28
+};
+char g_cyberon_group4_commands[13][60] = 
+{
+	"Connect",					//0
+	"Disconnect",				//1
+
+	"Report Location",			//2
+	"Report Location",			//3
+
+	"Get Status",				//4
+	"Get Status",				//5
+	"Get Status",				//6
+	"Get Status",				//7
+
+	"Report Battery",			//8
+	"Report Battery",			//9
+
+	"Report Environment",		//10
+	"Report Environment",		//11
+
+	"Reset"						//12
 };

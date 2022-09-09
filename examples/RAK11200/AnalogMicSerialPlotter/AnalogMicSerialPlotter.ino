@@ -14,7 +14,7 @@
 
 NAU85L40B   MIC(0x1D);
 
-int channels = 2;
+int channels = 1;
 // default PCM output frequency
 static const int frequency = 16000;
 int sampleBit = 16;

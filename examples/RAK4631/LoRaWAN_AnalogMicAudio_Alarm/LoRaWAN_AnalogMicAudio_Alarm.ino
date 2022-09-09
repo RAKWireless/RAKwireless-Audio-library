@@ -9,7 +9,7 @@
    @version 0.1
    @date 2022-06-10
 
-   @copyright Copyright (c) 2020
+   @copyright Copyright (c) 2022
 
    @note RAK4631 GPIO mapping to nRF52840 GPIO ports
    RAK4631    <->  nRF52840
@@ -105,6 +105,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);
@@ -115,7 +116,7 @@ void setup()
   Serial.begin(115200);
   while (!Serial)
   {
-    if ((millis() - timeout) < 5000)
+    if ((millis() - timeout) < 3000)
     {
       delay(100);
     }
@@ -221,6 +222,7 @@ void setup()
   MIC.begin();
   MIC.config(frequency, (MIC_CHANNEL1 | MIC_CHANNEL2), I2S_SAMPLE_16BIT); //
   i2s_config();
+  delay(500);
 }
 
 void loop()
@@ -234,45 +236,47 @@ void loop()
     I2S.read(&readbuff, sizeof(readbuff));
     for (int i = 0; i < I2S_DATA_BLOCK_WORDS; i++)
     {
-      if(channels == Stereo)
+      if (channels == Stereo)
       {
         uint32_t const * p_word = &readbuff[i];
         leftChannel[i] = ((uint16_t const *)p_word)[0];
-        rightChannel[i] = ((uint16_t const *)p_word)[1]; 
+        rightChannel[i] = ((uint16_t const *)p_word)[1];
       }
       else
       {
-        uint32_t const * p_word = &readbuff[i];        
+        uint32_t const * p_word = &readbuff[i];
         int16_t temp = ((uint8_t const *)p_word)[3];
-        temp = (int16_t)((temp<<8)|((uint8_t const *)p_word)[1]);
+        temp = (int16_t)((temp << 8) | ((uint8_t const *)p_word)[1]);
         leftChannel[i] = temp;
         temp = 0;
         temp = ((uint8_t const *)p_word)[2];
-        temp = (int16_t)((temp<<8)|((uint8_t const *)p_word)[0]);
-        rightChannel[i] = temp;   
-      }       
+        temp = (int16_t)((temp << 8) | ((uint8_t const *)p_word)[0]);
+        rightChannel[i] = temp;
+      }
 
-      sumLeft = sumLeft+abs(leftChannel[i]);
-      sumRight = sumRight+abs(rightChannel[i]);
-      Serial.print("L:");
-      Serial.print(leftChannel[i]);
-      Serial.print(" R:");
-      Serial.println(rightChannel[i]);
-    } 
-     
+      sumLeft = sumLeft + abs(leftChannel[i]);
+      sumRight = sumRight + abs(rightChannel[i]);
+      //      Serial.print("L:");
+      //      Serial.print(leftChannel[i]);
+      //      Serial.print(" R:");
+      //      Serial.println(rightChannel[i]);
+    }
+
     int averLeft = sumLeft / I2S_DATA_BLOCK_WORDS;
     int averRight = sumRight / I2S_DATA_BLOCK_WORDS;
-    
-    if ((averLeft > audio_threshold)||(averRight > audio_threshold))
+
+    if ((averLeft > audio_threshold) || (averRight > audio_threshold))
     {
       digitalWrite(LED_BLUE, HIGH);
       digitalWrite(LED_GREEN, HIGH);
       TimerSetValue(&ledTimer, 2000);
       TimerStart(&ledTimer);
+			Serial.println("Alarm");
       if (sendflag == 0)
       {
         sendflag = 1;
-        Serial.println("Alarm");
+        TimerSetValue(&appTimer, 10000);
+        TimerStart(&appTimer);
         if (join_flag == 1)
         {
           send_lora_frame();

@@ -1,65 +1,79 @@
-/*
-   @file Audio_Alarm.ino
+/**
+   @file Audio_Alarm_RAK18003.ino
    @author rakwireless.com
-   @brief When the microphone detects that the PDM value of the sound exceeds the set threshold,
-          the serial port will print out an alarm message, and the LED will light up.
+   @brief The microphone detects the noise threshold .
+   When the ambient noise is greater than the set threshold, a warning will be generated.
+   And the LED of WisBase will lights 1 seconds.
+   @note This need use the RAK18003 module.
    @version 0.1
-   @date 2021-01-12
+   @date 2022-06-10
    @copyright Copyright (c) 2020
 */
+#include <Arduino.h>
 #include "audio.h"
-#include <WiFi.h>
 
 TPT29555   Expander1(0x23);
 TPT29555   Expander2(0x25);
 
-int channels = 1;
-// default PCM output frequency
-static const int frequency = 16000;
-
+int channels = 1;   //1 mmono , 2 stereo
 // buffer to read samples into, each sample is 16-bits
-short sampleBuffer[BUFFER_SIZE];
-int audio_threshold = 2000; //This value determines the threshold for triggering the warning.
-int value = 0;
-int alarm_count = 0;
+short sampleBuffer[BUFFER_SIZE] = {0};
+volatile uint8_t read_flag = 0;
 
+//Alarm threshold
+int audio_threshold = 1000; //You can modify this value to your desired noise trigger threshold.
+
+int abs_int(short data);
 void RAK18003Init(void);
 
 void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
-  digitalWrite(LED_GREEN, LOW);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
+
+  // Initialize Serial for debug output
+  time_t timeout = millis();
   Serial.begin(115200);
-  delay(10);
+  while (!Serial)
+  {
+    if ((millis() - timeout) < 5000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+  }
 
   RAK18003Init();
+
+  // start pdm
+  PDM.setPins(PDM_DATA_PIN, PDM_CLK_PIN, PDM_PWR_PIN);
+  // configure the data receive callback
+  PDM.onReceive(onPDMdata);
+  // optionally set the gain, defaults to 20
+  PDM.setGain(20);
   // initialize PDM with:
   // - one channel (mono mode)
   // - a 16 kHz sample rate
-  // default PCM output frequency
-  if (!PDM.begin(channels, frequency)) {
+  if (!PDM.begin(channels, PCM_16000)) {
     Serial.println("Failed to start PDM!");
     while (1) yield();
   }
-}
-
-int abs_int(short data)
-{
-  if (data > 0) return data;
-  else return (0 - data);
+  delay(500);
 }
 
 void loop()
 {
-  // Read data from microphone
-  int sampleRead = PDM.read(sampleBuffer, sizeof(sampleBuffer));
-  sampleRead = sampleRead / 2;
   // wait for samples to be read
-  if (sampleRead > 0) {
+  if (read_flag == 1) {
+    read_flag = 0;
     uint32_t sum = 0;
     // print samples to the serial monitor or plotter
     for (int i = 0; i < BUFFER_SIZE; i++) {
@@ -68,37 +82,36 @@ void loop()
     int aver = sum / BUFFER_SIZE;
     if (aver > audio_threshold)
     {
-      alarm_count++;
-    }
-    sampleRead = 0;
-
-    if (alarm_count > 5)
-    {
-      alarm_count = 0;
       Serial.println("Alarm");
       digitalWrite(LED_BLUE, HIGH);
       digitalWrite(LED_GREEN, HIGH);
-      delay(200);
-      /*You can add your warning handling tasks here.*/
-    }
-    else
-    {
+      delay(1000);
       digitalWrite(LED_BLUE, LOW);
       digitalWrite(LED_GREEN, LOW);
     }
-    
   }
+}
+int abs_int(short data)
+{
+  if (data > 0) return data;
+  else return (0 - data);
+}
+void onPDMdata() {
+  // query the number of bytes available
+  // read into the sample buffer
+  PDM.read((uint8_t *)sampleBuffer, BUFFER_SIZE * 2);
+  read_flag = 1;
 }
 void RAK18003Init(void)
 {
-  if (!Expander1.begin())
+  while (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");
+    Serial.println("Did not find IO RAK18003 Expander Chip1,please check!");
   }
 
   if (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
   }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
@@ -136,7 +149,7 @@ void RAK18003Init(void)
 
   Expander2.digitalWrite(3, 0);   //set the PDM data direction from MIC to WisCore
 
-  if (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
+  while (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
   {
     Serial.println("There is no microphone, please check !");
     delay(500);

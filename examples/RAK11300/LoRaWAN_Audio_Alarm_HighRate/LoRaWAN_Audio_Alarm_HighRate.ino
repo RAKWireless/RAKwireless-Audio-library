@@ -1,22 +1,28 @@
 /**
- * @file LoRaWAN_Audio_Alarm.ino
- * @author rakwireless.com
- * @brief The microphone detects the noise threshold and sends an alarm through lora.
- * When the ambient noise is greater than the set threshold, a warning will be generated. 
- * And the LED of WisBase will lights 2 seconds. If you connect the lora gateway,it will 
- * send a packet of alarm information to the gateway.
- * @note  This example need use the microphones that can supports higher sampling rate.
- * @version 0.1
- * @date 2022-06-10
- * 
- * @copyright Copyright (c) 2022
- */
-#include "audio.h"
+   @file LoRaWAN_Audio_Alarm.ino
+   @author rakwireless.com
+   @brief The microphone detects the noise threshold and sends an alarm through lora.
+   When the ambient noise is greater than the set threshold, a warning will be generated.
+   And the LED of WisBase will lights 2 seconds. If you connect the lora gateway,it will
+   send a packet of alarm information to the gateway.
+   @note  This example need use the microphones that can supports higher sampling rate.
+   @version 0.1
+   @date 2022-06-10
+
+   @copyright Copyright (c) 2022
+*/
 #include <Arduino.h>
-#include <LoRaWan-RAK4630.h> //http://librarymanager/All#SX126x
+#include "LoRaWan-Arduino.h" //http://librarymanager/All#SX126x
 #include <SPI.h>
+#include <stdio.h>
+
+#include "mbed.h"
+#include "rtos.h"
+#include "audio.h"
 #include <PDM.h>
 
+using namespace std::chrono_literals;
+using namespace std::chrono;
 
 Channel_Mode channels = left; // stereo or left or right
 int frequency = 48000;
@@ -25,7 +31,7 @@ short sampleBuffer[BUFFER_SIZE];
 volatile uint8_t read_flag = 0;
 //Alarm threshold
 int audio_threshold = 8000;
-int sendflag= 0;
+int sendflag = 0;
 
 bool doOTAA = true;   // OTAA is used by default.
 #define SCHED_MAX_EVENT_DATA_SIZE APP_TIMER_SCHED_EVENT_DATA_SIZE /**< Maximum size of scheduler events. */
@@ -54,13 +60,13 @@ static void send_lora_frame(void);
 /**@brief Structure containing LoRaWan callback functions, needed for lmh_init()
 */
 static lmh_callback_t g_lora_callbacks = {BoardGetBatteryLevel, BoardGetUniqueId, BoardGetRandomSeed,
-                                        lorawan_rx_handler, lorawan_has_joined_handler, lorawan_confirm_class_handler, lorawan_join_failed_handler,
-                                        lorawan_unconfirm_txdone_handler,lorawan_confirm_txdone_handler
-                                       };
+                                          lorawan_rx_handler, lorawan_has_joined_handler, lorawan_confirm_class_handler, lorawan_join_failed_handler,
+                                          lorawan_unconfirm_txdone_handler, lorawan_confirm_txdone_handler
+                                         };
 //OTAA keys !!!! KEYS ARE MSB !!!!
-uint8_t nodeDeviceEUI[8] = {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x33, 0x66};
-uint8_t nodeAppEUI[8] = {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x33, 0x66};
-uint8_t nodeAppKey[16] = {0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x66};
+uint8_t nodeDeviceEUI[8] = {0x12, 0x88, 0x12, 0x88, 0x44, 0x12, 0x33, 0x66};
+uint8_t nodeAppEUI[8] = {0xB8, 0x27, 0xEB, 0xFF, 0xFE, 0x39, 0x00, 0x00};
+uint8_t nodeAppKey[16] = {0x12, 0x21, 0x12, 0x21, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x44, 0x44, 0x44, 0x44};
 
 // ABP keys
 uint32_t nodeDevAddr = 0x260116F8;
@@ -69,18 +75,21 @@ uint8_t nodeAppsKey[16] = {0xFB, 0xAC, 0xB6, 0x47, 0xF3, 0x58, 0x45, 0xC7, 0x50,
 
 // Private defination
 #define LORAWAN_APP_DATA_BUFF_SIZE 64                     /**< buffer size of the data to be transmitted. */
-#define LORAWAN_APP_INTERVAL 6000                        /**< Defines for user timer, the application data transmission interval. 10s, value in [ms]. */
+#define LORAWAN_APP_INTERVAL 10000                        /**< Defines for user timer, the application data transmission interval. 10s, value in [ms]. */
 static uint8_t m_lora_app_data_buffer[LORAWAN_APP_DATA_BUFF_SIZE];            //< Lora user application data buffer.
 static lmh_app_data_t m_lora_app_data = {m_lora_app_data_buffer, 0, 0, 0, 0}; //< Lora user application data structure.
 
-int join_flag = 0;
-TimerEvent_t appTimer;
-TimerEvent_t ledTimer;
 
+int join_flag = 0;
+TimerEvent_t ledTimer;
 void led_off_timer_handler(void);
-static uint32_t timers_init(void);
+
+mbed::Ticker appTimer;
+void tx_lora_periodic_handler(void);
+
 static uint32_t count = 0;
 static uint32_t count_fail = 0;
+
 int abs_int(short data);
 void onPDMdata();
 
@@ -88,7 +97,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
-  pinMode(LED_GREEN, OUTPUT); 
+  pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);
   digitalWrite(LED_GREEN, LOW);
@@ -133,9 +142,9 @@ void setup()
     case LORAMAC_REGION_CN470:
       Serial.println("Region: CN470");
       break;
-  case LORAMAC_REGION_CN779:
-    Serial.println("Region: CN779");
-    break;
+    case LORAMAC_REGION_CN779:
+      Serial.println("Region: CN779");
+      break;
     case LORAMAC_REGION_EU433:
       Serial.println("Region: EU433");
       break;
@@ -150,31 +159,22 @@ void setup()
       break;
     case LORAMAC_REGION_US915:
       Serial.println("Region: US915");
-    break;
-  case LORAMAC_REGION_RU864:
-    Serial.println("Region: RU864");
-    break;
-  case LORAMAC_REGION_AS923_2:
-    Serial.println("Region: AS923-2");
-    break;
-  case LORAMAC_REGION_AS923_3:
-    Serial.println("Region: AS923-3");
-    break;
-  case LORAMAC_REGION_AS923_4:
-    Serial.println("Region: AS923-4");
+      break;
+    case LORAMAC_REGION_RU864:
+      Serial.println("Region: RU864");
+      break;
+    case LORAMAC_REGION_AS923_2:
+      Serial.println("Region: AS923-2");
+      break;
+    case LORAMAC_REGION_AS923_3:
+      Serial.println("Region: AS923-3");
+      break;
+    case LORAMAC_REGION_AS923_4:
+      Serial.println("Region: AS923-4");
       break;
   }
   Serial.println("=====================================");
-  
-  //creat a user timer to send data to server period
-  uint32_t err_code;
-  err_code = timers_init();
-  if (err_code != 0)
-  {
-    Serial.printf("timers_init failed - %d\n", err_code);
-    return;
-  }
-  TimerInit(&ledTimer, led_off_timer_handler);  
+
   // Setup the EUIs and Keys
   if (doOTAA)
   {
@@ -188,9 +188,8 @@ void setup()
     lmh_setAppSKey(nodeAppsKey);
     lmh_setDevAddr(nodeDevAddr);
   }
-
   // Initialize LoRaWan
-  err_code = lmh_init(&g_lora_callbacks, g_lora_param_init, doOTAA, g_CurrentClass, g_CurrentRegion);
+  uint32_t  err_code = lmh_init(&g_lora_callbacks, g_lora_param_init, doOTAA, g_CurrentClass, g_CurrentRegion);
   if (err_code != 0)
   {
     Serial.printf("lmh_init failed - %d\n", err_code);
@@ -198,7 +197,7 @@ void setup()
   }
 
   // Start Join procedure
-  lmh_join(); 
+  lmh_join();
   // configure the data receive callback
   PDM.onReceive(onPDMdata);
   // initialize PDM with:
@@ -208,11 +207,13 @@ void setup()
   if (!PDM.begin(channels, frequency)) {
     Serial.println("Failed to start PDM!");
     while (1) yield();
-  }  
+  }
+  TimerInit(&ledTimer, led_off_timer_handler);
+
 }
 void loop()
 {
-// wait for samples to be read
+  // wait for samples to be read
   if (read_flag == 1) {
     read_flag = 0;
     uint32_t sum = 0;
@@ -220,37 +221,37 @@ void loop()
     for (int i = 0; i < BUFFER_SIZE; i++) {
       sum = sum + abs(sampleBuffer[i]);
     }
-    int aver = sum/BUFFER_SIZE;
-    if(aver > audio_threshold) 
+    int aver = sum / BUFFER_SIZE;
+    if (aver > audio_threshold)
     {
       Serial.println("Alarm");
       digitalWrite(LED_BLUE, HIGH);
       digitalWrite(LED_GREEN, HIGH);
       TimerSetValue(&ledTimer, 2000);
-      TimerStart(&ledTimer);    
-      if(sendflag == 0)
+      TimerStart(&ledTimer);
+      if (sendflag == 0)
       {
-       sendflag = 1;           
-        if(join_flag == 1)
-        {         
+        sendflag = 1;
+        if (join_flag == 1)
+        {
           send_lora_frame();
-        }        
+        }
       }
     }
-  }  
+  }
 }
 int abs_int(short data)
 {
- if(data>0) return data;
- else return (0-data);
+  if (data > 0) return data;
+  else return (0 - data);
 }
 /**@brief LoRa function for handling HasJoined event.
- */
+*/
 void lorawan_has_joined_handler(void)
 {
-  if(doOTAA == true)
+  if (doOTAA == true)
   {
-    Serial.println("OTAA Mode, Network Joined!");    
+    Serial.println("OTAA Mode, Network Joined!");
   }
   else
   {
@@ -261,9 +262,9 @@ void lorawan_has_joined_handler(void)
   if (ret == LMH_SUCCESS)
   {
     join_flag = 1;
-//    delay(1000);
-//    TimerSetValue(&appTimer, LORAWAN_APP_INTERVAL);
-//    TimerStart(&appTimer);
+    delay(1000);
+    // Start the application timer. Time has to be in microseconds
+    appTimer.attach(tx_lora_periodic_handler, (std::chrono::microseconds)(LORAWAN_APP_INTERVAL * 1000));
   }
 }
 /**@brief LoRa function for handling OTAA join failed
@@ -275,13 +276,13 @@ static void lorawan_join_failed_handler(void)
   Serial.println("Check if a Gateway is in range!");
 }
 /**@brief Function for handling LoRaWan received data from Gateway
- *
- * @param[in] app_data  Pointer to rx data
- */
+
+   @param[in] app_data  Pointer to rx data
+*/
 void lorawan_rx_handler(lmh_app_data_t *app_data)
 {
   Serial.printf("LoRa Packet received on port %d, size:%d, rssi:%d, snr:%d, data:%s\n",
-          app_data->port, app_data->buffsize, app_data->rssi, app_data->snr, app_data->buffer);
+                app_data->port, app_data->buffsize, app_data->rssi, app_data->snr, app_data->buffer);
 }
 
 void lorawan_confirm_class_handler(DeviceClass_t Class)
@@ -294,13 +295,13 @@ void lorawan_confirm_class_handler(DeviceClass_t Class)
 }
 static void lorawan_unconfirm_txdone_handler(void)
 {
-//  Serial.println("unconfirm tx done");
+  //  Serial.println("unconfirm tx done");
   sendflag = 0;
 }
 static void lorawan_confirm_txdone_handler(bool result)
 {
-//   Serial.println("confirm tx done");
-   sendflag = 0;
+  //   Serial.println("confirm tx done");
+  sendflag = 0;
 }
 void send_lora_frame(void)
 {
@@ -339,29 +340,17 @@ void led_off_timer_handler(void)
   digitalWrite(LED_GREEN, LOW);
 }
 /**@brief Function for handling user timerout event.
- */
+*/
 void tx_lora_periodic_handler(void)
 {
-//  TimerSetValue(&appTimer, LORAWAN_APP_INTERVAL);
-//  TimerStart(&appTimer);
-//  Serial.println("Sending frame now...");
-//  send_lora_frame();
+  appTimer.attach(tx_lora_periodic_handler, (std::chrono::microseconds)(LORAWAN_APP_INTERVAL * 1000));
+  // This is a timer interrupt, do not do lengthy things here. Signal the loop() instead
   sendflag = 0;
-}
-
-/**@brief Function for the Timer initialization.
- *
- * @details Initializes the timer module. This creates and starts application timers.
- */
-uint32_t timers_init(void)
-{
-  TimerInit(&appTimer, tx_lora_periodic_handler);
-  return 0;
 }
 
 void onPDMdata() {
   // query the number of bytes available
   // read into the sample buffer
-  PDM.read((uint8_t *)sampleBuffer, BUFFER_SIZE*2);
+  PDM.read((uint8_t *)sampleBuffer, BUFFER_SIZE * 2);
   read_flag = 1;
 }

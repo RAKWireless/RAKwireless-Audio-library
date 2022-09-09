@@ -1,17 +1,22 @@
 /**
- * @file VoiceRecognitionL1.ino
- * @author rakwireless.com
- * @brief This example shows that use the WisCore and microphone to recognize the specific simple commands.
- * @version 0.1
- * @date 2022-06-6
- * @copyright Copyright (c) 2022
- */
+   @file VoiceRecognitionL1.ino
+   @author rakwireless.com
+   @brief This example shows that use the WisCore and microphone to recognize the specific simple commands.
+   @note Running this example requires WisCore written with a Cyberon license.   
+   First you need select one command group, the group value can be 0-4.
+        eg:If selected group 1 need to set "#define  COMMAND_GROUP_CHOOSE     1" in the code.
+   The trigger words can be "Hey RAK Star"、"Hey Helium" or "Hey RAK Cloud".
+   All command words will be printed on the serial port at the beginning.
+   @version 0.1
+   @date 2022-06-6
+   @copyright Copyright (c) 2022
+*/
 
 #include "audio.h"
 #include <CDSpotter.h>
 #include "RAKwireless_Demo_pack_WithTxt_Lv1.h"
 #define DSPOTTER_MODEL           g_lpdwRAKwireless_Demo_pack_WithTxt_Lv1
-#define	COMMAND_GROUP_CHOOSE	 2
+#define	COMMAND_GROUP_CHOOSE	   2  //group value can be 0-4
 #define COMMAND_STAGE_TIMEOUT    6000                    // The minimum recording time in ms when there is no result at command stage.
 #define COMMAND_STAGE_REPEAT     1                       // When it is 1, sample code will recognize repeatly at command stage till to timeout.
                                                          // Otherwise, it will switch to trigger stage immediately after command recognized.
@@ -37,17 +42,32 @@ int g_nCurrentStage = 0;
 int g_nBlink = 0;
 uint32_t *g_ptr;//For license
 
-
 void setup() {
   int nMempoolSize = 0, nErr = -1;
   byte *pMemPool = 0;
   int nActiveCommandGroup = COMMAND_GROUP_CHOOSE;
-
-  //Serial.println("Before PDM init");
-  //rp2040
-  pinMode(LED_BUILTIN, OUTPUT);
+  
+  pinMode(WB_IO2, OUTPUT);
+  digitalWrite(WB_IO2, HIGH);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
+  delay(500);
+  // Initialize Serial for debug output
+  time_t timeout = millis();
   Serial.begin(115200);
-  while (!Serial);
+  while (!Serial)
+  {
+    if ((millis() - timeout) < 3000)
+    {
+      delay(100);
+    }
+    else
+    {
+      break;
+    }
+  }
  
   //For Rak4630
   PDM.setPins(PDM_DATA_PIN, PDM_CLK_PIN, PDM_PWR_PIN);
@@ -103,8 +123,7 @@ void setup() {
   if(nErr!=CDSpotter::Success){
 	Serial.println("Set active commands group failed, using default");
 	nActiveCommandGroup = 1;
-  }
- 
+  } 
  
   //show command
   for (int nStage = 0; nStage < 2; nStage++)
@@ -158,16 +177,6 @@ void loop() {
   //VR return Key word get keyword info
   if(nRes==CDSpotter::Success)
   {
-	if(g_nBlink)
-	{
-		digitalWrite(LED_BUILTIN, LOW);
-		g_nBlink = 0;
-	}
-	else
-	{
-		digitalWrite(LED_BUILTIN, HIGH);
-		g_nBlink = 1;
-	}
     Serial.print("Detect ID: ");
     g_hDSpotter.GetRecogResult(&nID, pCommand, sizeof(pCommand), &nScore, &nSG, &nFil);
     Serial.print(pCommand);
@@ -180,14 +189,23 @@ void loop() {
     Serial.print(" Score: ");
     Serial.println(nScore);
   }
+  
   //Check VR stage
-  if(nStage != g_nCurrentStage)
+  if (nStage != g_nCurrentStage)
   {
     g_nCurrentStage  = nStage;
-    if(nStage == CDSpotter::TriggerStage)
+    if (nStage == CDSpotter::TriggerStage)
+    {
       Serial.println("VR Switch to Trigger Stage");
-    else if(nStage == CDSpotter::CommandStage)
+      digitalWrite(LED_BLUE, LOW);
+      digitalWrite(LED_GREEN, LOW);
+    }
+    else if (nStage == CDSpotter::CommandStage)
+    {
       Serial.println("VR Switch to Command Stage");
+      digitalWrite(LED_BLUE, HIGH);
+      digitalWrite(LED_GREEN, HIGH);
+    }
   }
   // Clear the read count
   samplesRead = 0;
