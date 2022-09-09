@@ -2,7 +2,7 @@
    @file VoiceControlRGB.ino
    @author rakwireless.com
    @brief This example shows how to control RGB with voice.
-   @note This example need use the RAK18003 module and RAK14001 module.
+   @note This example need use the RAK18003 module and RAK14001 module.The command need select the group 2
    @version 0.1
    @date 2022-08-6
    @copyright Copyright (c) 2022
@@ -56,6 +56,7 @@ void setup() {
 
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
@@ -204,7 +205,7 @@ void loop() {
         digitalWrite(LED_GREEN, LOW);
         Serial.println("VR Switch to Trigger Stage");
       }
-      else if(nStage == CDSpotter::CommandStage)
+      else if (nStage == CDSpotter::CommandStage)
       {
         digitalWrite(LED_BLUE, HIGH);
         digitalWrite(LED_GREEN, HIGH);
@@ -253,14 +254,16 @@ void Audio_task(void *pvParameters)
 }
 void RAK18003Init(void)
 {
-  if (!Expander1.begin())
+  while (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");
+    Serial.println("Did not find RAK18003 IO Expander Chip1,please check!");
+    delay(500);
   }
 
-  if (!Expander2.begin())
+  while (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
+    delay(500);
   }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
@@ -308,5 +311,6 @@ void RAK18003Init(void)
   while (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
   {
     Serial.println("There is no microphone board, please check !");
+    delay(500);
   }
 }

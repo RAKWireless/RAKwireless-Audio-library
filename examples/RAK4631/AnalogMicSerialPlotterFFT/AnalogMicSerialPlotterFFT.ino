@@ -107,7 +107,7 @@ void loop() {
     //      Serial.println(rightChannel[i]);
     //      Serial.printf("%08X\t\tL:%04X\tR:%04X\t\r\n",readbuff[i],leftChannel[i],rightChannel[i]);
 
-    if (first_flag > 20)  //Discard the first 20 samples data
+    if (first_flag > 10)  //Discard the first 10 samples data
     {
       int n = 0;
       for (int i = 0; i < 256; i++)

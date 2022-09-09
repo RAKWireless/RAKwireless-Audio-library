@@ -18,8 +18,9 @@ static const int frequency = 16000;
 int sampleBit = 16;
 // buffer to read samples into, each sample is 16-bits
 short sampleBuffer[BUFFER_SIZE];
-int audio_threshold = 2000;
-
+int audio_threshold = 800;
+int aver = 0;
+int g_alarm = 0;
 int abs_int(short data);
 
 void setup() {
@@ -52,6 +53,8 @@ void setup() {
 
   I2S.setI2Sformat(I2S_COMM_FORMAT_STAND_I2S);
   I2S.begin(channels, frequency, sampleBit);
+  delay(500);
+  Serial.println("This is an noise alarm example.");
 }
 
 void loop()
@@ -68,17 +71,19 @@ void loop()
     {
       sum = sum + abs(sampleBuffer[i]);
     }
-    int aver = sum / BUFFER_SIZE;
+    aver = sum / BUFFER_SIZE;
+    sampleRead = 0;
+
     if (aver > audio_threshold)
     {
-      Serial.println("Alarm");
+      g_alarm++;
+      Serial.printf("Alarm %d\r\n", g_alarm);
       digitalWrite(LED_BLUE, HIGH);
       digitalWrite(LED_GREEN, HIGH);
-      delay(2000);
+      delay(1000);
       digitalWrite(LED_BLUE, LOW);
       digitalWrite(LED_GREEN, LOW);
     }
-    sampleRead = 0;
   }
 }
 

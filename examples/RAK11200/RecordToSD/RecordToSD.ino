@@ -28,7 +28,7 @@ File new_audio_file;
 // default number of output channels
 static const int channels = 2;
 // default PCM output frequency
-static const int frequency = 8000;
+static const int frequency = 16000;
 #define BIT_PER_SAMPLE 16
 #define RECORD_TIME    8    //recording time default 8 seconds
 
@@ -99,7 +99,7 @@ void RAK18003Init(void)
 {
   while (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");
+    Serial.println("Did not find RAK18003 IO Expander Chip1,please check!");
     digitalWrite(LED_BLUE, HIGH);
     digitalWrite(LED_GREEN, HIGH);
     delay(200);
@@ -110,7 +110,7 @@ void RAK18003Init(void)
 
   while (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
     digitalWrite(LED_BLUE, HIGH);
     digitalWrite(LED_GREEN, HIGH);
     delay(200);
@@ -120,20 +120,20 @@ void RAK18003Init(void)
   }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
-  Expander1.pinMode(2, OUTPUT);   //MIC CTR1
-  Expander1.pinMode(3, OUTPUT);   //MIC CTR2
+  Expander1.pinMode(2, INPUT);   //MIC CTR1
+  Expander1.pinMode(3, INPUT);   //MIC CTR2
   Expander1.pinMode(4, INPUT);    //AMP check
-  Expander1.pinMode(5, OUTPUT);   //AMP CTR1
-  Expander1.pinMode(6, OUTPUT);   //AMP CTR2
-  Expander1.pinMode(7, OUTPUT);   //AMP CTR3
+  Expander1.pinMode(5, INPUT);   //AMP CTR1
+  Expander1.pinMode(6, INPUT);   //AMP CTR2
+  Expander1.pinMode(7, INPUT);   //AMP CTR3
   Expander1.pinMode(8, INPUT);    //DSP check
   Expander1.pinMode(9, INPUT);    //DSP CTR1  DSP int
   Expander1.pinMode(10, INPUT);   //DSP CTR2  DSP ready
-  Expander1.pinMode(11, OUTPUT);  //DSP CTR3  DSP reset
-  Expander1.pinMode(12, OUTPUT);  //DSP CTR4  not use
-  Expander1.pinMode(13, OUTPUT);  //DSP CTR5  not use
-  Expander1.pinMode(14, OUTPUT);  //NOT USE
-  Expander1.pinMode(15, OUTPUT);  //NOT USE
+  Expander1.pinMode(11, INPUT);  //DSP CTR3  DSP reset
+  Expander1.pinMode(12, INPUT);  //DSP CTR4  not use
+  Expander1.pinMode(13, INPUT);  //DSP CTR5  not use
+  Expander1.pinMode(14, INPUT);  //NOT USE
+  Expander1.pinMode(15, INPUT);  //NOT USE
 
   Expander2.pinMode(0, OUTPUT);  //CORE  SPI CS1   DSP CS
   Expander2.pinMode(1, OUTPUT);  //CORE  SPI CS2
@@ -154,11 +154,16 @@ void RAK18003Init(void)
 
   Expander2.digitalWrite(3, 0);   //set the PDM data direction from MIC to WisCore
 
-  //  if (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
-  //  {
-  //    Serial.println("There is no microphone, please check !");
-  //    delay(500);
-  //  }
+  while (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
+  {
+    Serial.println("There is no microphone, please check !");
+    delay(500);
+  }
+   while(Expander1.digitalRead(0) == 1)  //Check SD card
+   {
+     Serial.println("There is no SD card on the RAK18003 board, please check !");
+     delay(500);
+   }
 }
 void SD_CS_high()
 {

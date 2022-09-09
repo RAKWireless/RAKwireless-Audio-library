@@ -19,7 +19,7 @@ int sampleBit = 16;
 // buffer to read samples into, each sample is 16-bits
 short sampleBuffer[BUFFER_SIZE];
 
-int audio_threshold = 2000;
+int audio_threshold = 2000;  //You can modify the noise judgment threshold according to your environmental conditions
 
 const char *ssid = "YourWIFI";
 const char *password = "YourPassword";
@@ -28,10 +28,13 @@ const char* host = "www.baidu.com";   // your server will start a TCP listening
 const char* streamId   = "....................";
 const char* privateKey = "....................";
 int value = 0;
+int g_alarm = 0;
+
 void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, LOW);
   pinMode(LED_BLUE, OUTPUT);
@@ -132,7 +135,8 @@ void loop()
     int aver = sum / BUFFER_SIZE;
     if (aver > audio_threshold)
     {
-      Serial.println("Alarm");
+      g_alarm++;
+      Serial.printf("Alarm %d\r\n",g_alarm);
       digitalWrite(LED_BLUE, HIGH);
       digitalWrite(LED_GREEN, HIGH);
       send_to_host();

@@ -1,14 +1,14 @@
 /**
- * @file PDMSerialPlotter.ino
- * @author rakwireless.com
- * @brief This example reads audio data from the PDM microphones, and prints
- * out the samples to the Serial console. The Serial Plotter built into the
- * Arduino IDE can be used to plot the audio data (Tools -> Serial Plotter)
- * @version 0.1
- * @date 2022-06-6
- * @copyright Copyright (c) 2022
- */
- 
+   @file PDMSerialPlotter.ino
+   @author rakwireless.com
+   @brief This example reads audio data from the PDM microphones, and prints
+   out the samples to the Serial console. The Serial Plotter built into the
+   Arduino IDE can be used to plot the audio data (Tools -> Serial Plotter)
+   @version 0.1
+   @date 2022-06-6
+   @copyright Copyright (c) 2022
+*/
+
 #include "audio.h"
 Channel_Mode channels = left; // stereo or left or right
 int frequency = 16000;
@@ -19,7 +19,7 @@ volatile uint8_t read_flag = 0;
 void onPDMdata();
 
 void setup() {
-  
+
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
@@ -32,7 +32,7 @@ void setup() {
   {
     if ((millis() - timeout) < 3000)
     {
-      delay(100);      
+      delay(100);
     }
     else
     {
@@ -49,7 +49,7 @@ void setup() {
     Serial.println("Failed to start PDM!");
     while (1);
   }
-  
+  delay(500);
   Serial.println("=====================================");
   Serial.println("Audio test");
   Serial.println("=====================================");
@@ -61,6 +61,7 @@ void loop() {
     read_flag = 0;
     // print samples to the serial monitor or plotter
     for (int i = 0; i < BUFFER_SIZE; i++) {
+
       Serial.println(sampleBuffer[i]);
     }
   }

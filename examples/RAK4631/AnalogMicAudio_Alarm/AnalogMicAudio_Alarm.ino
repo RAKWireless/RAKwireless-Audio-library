@@ -7,7 +7,7 @@
    @note This example need use the RAK18040 analog microphone module.
    @version 0.1
    @date 2022-06-10
-   @copyright Copyright (c) 2020
+   @copyright Copyright (c) 2022
 */
 #include <Arduino.h>
 #include "audio.h"
@@ -25,7 +25,7 @@ int16_t leftChannel[512] = {0};
 int16_t rightChannel[512] = {0};
 
 //Alarm threshold
-int audio_threshold = 1000; //You can modify this value to your desired noise trigger threshold.
+int audio_threshold = 800; //You can modify this value to your desired noise trigger threshold.
 int alarm_count = 0;
 
 volatile uint8_t rx_flag = 1;
@@ -38,6 +38,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, LOW);

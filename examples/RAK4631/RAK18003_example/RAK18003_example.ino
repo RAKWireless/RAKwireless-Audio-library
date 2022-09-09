@@ -1,20 +1,20 @@
 /**
- * @file RAK18003_example.ino
- * @author rakwireless.com
- * @brief This example shows how to configure the IO signal output of the RAK18003 module 
- * and use the RAK18003 to read the IO status, and how to detect other modules.
- * @version 0.1
- * @date 2022-06-10
- * 
- * @copyright Copyright (c) 2020
- *  
- */
+   @file RAK18003_example.ino
+   @author rakwireless.com
+   @brief This example shows how to configure the IO signal output of the RAK18003 module
+   and use the RAK18003 to read the IO status, and how to detect other modules.
+   @version 0.1
+   @date 2022-06-10
+
+   @copyright Copyright (c) 2022
+
+*/
 #include <Arduino.h>
 #include "audio.h"
 
-#define    EXPANDER_INT_PIN   WB_IO1    
+#define    EXPANDER_INT_PIN   WB_IO1
 
-TPT29555   Expander1(0x23);    
+TPT29555   Expander1(0x23);
 TPT29555   Expander2(0x25);
 
 volatile uint8_t int_flag = 0;
@@ -26,6 +26,7 @@ void setup()
 {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
@@ -40,25 +41,24 @@ void setup()
       break;
     }
   }
-     
- RAK18003Init(); 
- pinMode(EXPANDER_INT_PIN, INPUT_PULLUP); 
- attachInterrupt(EXPANDER_INT_PIN, RAK18003_IRQ,CHANGE);
 
- Serial.println("This is an RAK18003 example");
+  Serial.println("This is an RAK18003 example");
+  RAK18003Init();
+  pinMode(EXPANDER_INT_PIN, INPUT_PULLUP);
+  attachInterrupt(EXPANDER_INT_PIN, RAK18003_IRQ, CHANGE);
 }
 
 void loop()
 {
-  if(int_flag == 1)
-    {
-      
-      uint16_t chip1_io_state = Expander1.readAllPin();
-      uint16_t chip2_io_state = Expander2.readAllPin();
+  if (int_flag == 1)
+  {
 
-      Serial.printf("Expander1 IO state:%04X  Expander2 IO state:%04X\r\n",chip1_io_state,chip2_io_state);    
-      int_flag = 0;
-    }     
+    uint16_t chip1_io_state = Expander1.readAllPin();
+    uint16_t chip2_io_state = Expander2.readAllPin();
+
+    Serial.printf("Expander1 IO state:%04X  Expander2 IO state:%04X\r\n", chip1_io_state, chip2_io_state);
+    int_flag = 0;
+  }
 }
 void RAK18003_IRQ(void)
 {
@@ -66,15 +66,15 @@ void RAK18003_IRQ(void)
 }
 void RAK18003Init(void)
 {
-  if(!Expander1.begin())
+  while (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");   
+    Serial.println("Did not find RAK18003 IO Expander Chip1,please check!");
   }
 
-  if(!Expander2.begin())
+  while (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");      
-  }  
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
+  }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
   Expander1.pinMode(2, INPUT);    //MIC CTR1
@@ -84,7 +84,7 @@ void RAK18003Init(void)
   Expander1.pinMode(6, INPUT);    //AMP CTR2
   Expander1.pinMode(7, INPUT);    //AMP CTR3
   Expander1.pinMode(8, INPUT);    //DSP check
-  Expander1.pinMode(9, INPUT);    //DSP CTR1  DSP int 
+  Expander1.pinMode(9, INPUT);    //DSP CTR1  DSP int
   Expander1.pinMode(10, INPUT);   //DSP CTR2  DSP ready
   Expander1.pinMode(11, OUTPUT);  //DSP CTR3  DSP reset
   Expander1.pinMode(12, INPUT);   //DSP CTR4  not use
@@ -92,11 +92,11 @@ void RAK18003Init(void)
   Expander1.pinMode(14, INPUT);   //NOT USE
   Expander1.pinMode(15, INPUT);   //NOT USE
 
-//  Expander1.digitalWrite(14, 0);    //set chip 1 not use pin output low
-//  Expander1.digitalWrite(15, 0);    //set chip 1 not use pin output low
-    
+  //  Expander1.digitalWrite(14, 0);    //set chip 1 not use pin output low
+  //  Expander1.digitalWrite(15, 0);    //set chip 1 not use pin output low
+
   Expander2.pinMode(0, OUTPUT);  //CORE  SPI CS1 for DSPG CS
-  Expander2.pinMode(1, OUTPUT);  //CORE  SPI CS2   
+  Expander2.pinMode(1, OUTPUT);  //CORE  SPI CS2
   Expander2.pinMode(2, OUTPUT);  //CORE  SPI CS3
   Expander2.pinMode(3, OUTPUT);  //PDM switch CTR    1 to dsp   0 to core
   Expander2.pinMode(4, INPUT);  //not use
@@ -110,32 +110,32 @@ void RAK18003Init(void)
   Expander2.pinMode(12, INPUT); //not use
   Expander2.pinMode(13, INPUT); //not use
   Expander2.pinMode(14, INPUT); //not use
-  Expander2.pinMode(15, INPUT); //not use 
+  Expander2.pinMode(15, INPUT); //not use
 
-  Expander2.digitalWrite(0, 1);  //set SPI CS1 High 
-  Expander2.digitalWrite(1, 1);  //set SPI CS2 High  
+  Expander2.digitalWrite(0, 1);  //set SPI CS1 High
+  Expander2.digitalWrite(1, 1);  //set SPI CS2 High
   Expander2.digitalWrite(2, 1);  //set SPI CS3 High
-  
-  Expander2.digitalWrite(3,0);    //set the PDM data direction from MIC to WisCore
 
-  if(Expander1.digitalRead(0) == 1)  //Check SD card
+  Expander2.digitalWrite(3, 0);   //set the PDM data direction from MIC to WisCore
+
+  if (Expander1.digitalRead(0) == 1) //Check SD card
   {
-    Serial.println("There is no SD card on the RAK18003 board, please check !");     
-  }
-  
-  if(Expander1.digitalRead(1) == 0)  //Check if the microphone board is connected on the RAK18003
-  {
-    Serial.println("There is no microphone board, please check !");     
+    Serial.println("There is no SD card on the RAK18003 board, please check !");
   }
 
-  if(Expander1.digitalRead(4) == 0)  //Check if the RAK18060 AMP board is connected on the RAK18003
+  if (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
   {
-    Serial.println("There is no RAK18060 AMP board, please check !");     
+    Serial.println("There is no microphone board, please check !");
   }
 
-  if(Expander1.digitalRead(8) == 0)  //Check if the RAK18080 DSPG board is connected on the RAK18003
+  if (Expander1.digitalRead(4) == 0) //Check if the RAK18060 AMP board is connected on the RAK18003
   {
-    Serial.println("There is no RAK18080 DSPG board, please check !");     
+    Serial.println("There is no RAK18060 AMP board, please check !");
   }
-  
+
+  if (Expander1.digitalRead(8) == 0) //Check if the RAK18080 DSPG board is connected on the RAK18003
+  {
+    Serial.println("There is no RAK18080 DSPG board, please check !");
+  }
+
 }

@@ -5,6 +5,7 @@
  * and sampling depth of 16 bits.
  * @How to convert WAV file to HEX format .h file can use the online tool in the link.
  * https://tomeko.net/online_tools/file_to_hex.php?lang=en
+ * @note This example need use the battery power for the WisBase.
  * @version 0.1
  * @date 2022-06-20
  * @copyright Copyright (c) 2022
@@ -24,11 +25,7 @@ static const int frequency = 22050;   //samplerate 22.05KHz
 void setup() {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
-  pinMode(LED_GREEN, OUTPUT);
-  digitalWrite(LED_GREEN, HIGH);
-  pinMode(LED_BLUE, OUTPUT);
-  digitalWrite(LED_BLUE, HIGH);
-
+  delay(500);
   // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
@@ -62,6 +59,10 @@ void setup() {
   I2S.begin(channels, frequency);
   Serial.println("start play");
   Serial.println("=====================================");
+  pinMode(LED_GREEN, OUTPUT);
+  digitalWrite(LED_GREEN, HIGH);
+  pinMode(LED_BLUE, OUTPUT);
+  digitalWrite(LED_BLUE, HIGH);
 }
 
 void loop() 
@@ -69,7 +70,7 @@ void loop()
   int writeByte = I2S.write((void *)sound_buff,sizeof(sound_buff));
   if(writeByte>0)
   {
-    delay(150);
+    delay(150); //Waiting for DMA to transfer remaining data
     Serial.println("paly accomplish");
     I2S.stop();
   }

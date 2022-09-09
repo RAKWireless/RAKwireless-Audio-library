@@ -2,8 +2,11 @@
 #include "tpt29555.h"
 #include "audio.h"
 
+#if defined(_VARIANT_RAK11300_) // for RAK11300
+  I2S RP2040_I2S(OUTPUT); 
+#endif			
 
-TPT29555   tpt29555_1(0x23);    //中断管教在这个芯片上
+TPT29555   tpt29555_1(0x23);    //interrupt pin in this chip
 TPT29555   tpt29555_2(0x25);
 
 RAK_SPI  SPI_USER;
@@ -30,10 +33,13 @@ void DSPG::i2sInit(void)
   I2S.setSampleBit(16);
   I2S.begin(2, 48000);
 #elif defined(_VARIANT_RAK11300_) // for RAK11300
-  I2S i2s(OUTPUT);
-  i2s.setBitsPerSample(16); 
+//   I2S i2s(OUTPUT);
+//   i2s.setBitsPerSample(16); 
+//  // start I2S at the sample rate with 16-bits per sample
+//   i2s.begin(48000);
+  RP2040_I2S.setBitsPerSample(16); 
  // start I2S at the sample rate with 16-bits per sample
-  i2s.begin(48000);
+  RP2040_I2S.begin(48000);
 #else							  // for RAK4630
   I2S.begin(Stereo,48000,16);
   I2S.start();
@@ -141,6 +147,14 @@ void DSPG::setSpiCsHigh(void)
 {
 	tpt29555_2.digitalWrite(0, 1);	//DSP CTR2	SPI CS
 }
+void DSPG::setSD_CS_High(void)
+{
+	tpt29555_2.digitalWrite(2, 1);
+}
+void DSPG::setSD_CS_Low(void)
+{
+	tpt29555_2.digitalWrite(2, 0);
+}
 void DSPG::setMicDirection(uint8_t dir)
 {
 	if(dir==0)
@@ -153,7 +167,7 @@ void DSPG::setMicDirection(uint8_t dir)
 	}
 	
 }
-int DSPG::begin(void) 
+int DSPG::begin(const char *lpdwModel,int modelSize) 
 {
   //echo cancellation    
   i2sInit();
@@ -163,13 +177,14 @@ int DSPG::begin(void)
 
   if(ioExpanderInit())
   {
+	Serial.println("RAK18003 module not detected, please check !\r\n");	
 	return 1;
   }
 
  Serial.println("DSPG check");
   if(dspCheck()==0)
   {
-	Serial.println("check DSP \r\n");	
+	Serial.println("RAK18080 module not detected, please check RAK18080 !\r\n");	
 	delay(200);
 	return 1;
   }
@@ -178,9 +193,9 @@ int DSPG::begin(void)
 
   //config the reset pin rx1 and reset
   setDspResetHigh();  
-  delay(100);    
+  delay(200);    
   setDspResetLow();
-  delay(800);
+  delay(1000);
   setDspResetHigh();  
 
   fw_ok = 0;
@@ -191,10 +206,11 @@ int DSPG::begin(void)
  Serial.println("DSPG config");
   if(config())
   {
+	Serial.println("RAK18080 init failed, please check !\r\n");	
 	return 1;
   }
 
-  run();
+  run(lpdwModel,modelSize);
 
   Serial.println("load model");
   mode(USE_CASE_BARGEIN_1MIC);
@@ -332,8 +348,23 @@ int DSPG::config(void)
 	int fail_cnt = 0;
 	uint32_t rsp = 0;
  	char send_buf_0[] = {0x00};
-	char preboot_request[] = {0x5A, 0x02, 0x04, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0xCD, 0xAB, 0x03, 0x00, 0x01, 0x00, 0x99, 0x9a};	//EVENT 0x8e; FW READY 0x8a; active high
-							 
+
+#ifdef CUSTOMER_BOARD
+#if USE_HIGHER_GPIO
+#if USE_HIGHER_GPIO_AT_3V3
+	char preboot_request[] = {0x5A, 0x02, 0x05, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0xCD, 0xAB, 0x07, 0x00, 0x01, 0x00, 0x99, 0x9a, 0x00, 0x00};	//EVENT 25; FW READY 26; active high; use higher GPIOs for 68Pin at 3.3v
+#else
+	char preboot_request[] = {0x5A, 0x02, 0x05, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0xCD, 0xAB, 0x07, 0x00, 0x01, 0x00, 0x99, 0x9a, 0x02, 0x00};	//EVENT 25; FW READY 26; active high; use higher GPIOs for 68Pin at 1.8v
+#endif
+#else
+	char preboot_request[] = {0x5A, 0x02, 0x04, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0xCD, 0xAB, 0x03, 0x00, 0x01, 0x00, 0x99, 0x9a};	//EVENT 25; FW READY 26; active high; don't use higher GPIOs
+#endif
+#else
+	char preboot_request[] = {0x5A, 0x02, 0x05, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0xCD, 0xAB, 0x07, 0x00, 0x01, 0x00, 0x8e, 0x8a, 0x02, 0x00};	//EVENT 0x8e; FW READY 0x8a; active high
+#endif
+
+	// char preboot_request[] = {0x5A, 0x02, 0x05, 0x00, 0x00, 0x00, 0x02, 0x02, 0x00, 0x00, 0xCD, 0xAB, 0x07, 0x00, 0x01, 0x00, 0x99, 0x9a, 0x02, 0x00};	//EVENT 25; FW READY 26; active high; use higher GPIOs for 68Pin at 1.8v
+
 	char preboot_nnl1[] = {0x5a, 0x04, 0x90, 0x00, 0x00, 0x03, 0xA5, 0x52, 0x55, 0x55};
 	char preboot_nnl2[] = {0x5a, 0x04, 0x94, 0x00, 0x00, 0x03, 0xA5, 0x52, 0x55, 0x15};
 	char preboot_nnl3[] = {0x5a, 0x04, 0x20, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00}; 
@@ -391,7 +422,7 @@ int DSPG::config(void)
     return 0;
 }
 
-void DSPG::run(void)
+void DSPG::run(const char *lpdwModel,int modelSize)
 {
     uint8_t rsp[2];
     uint16_t tmp;
@@ -404,14 +435,14 @@ void DSPG::run(void)
 	}
 	#endif	
 	
-    // spiRegisterRead((uint16_t)HOST_INTERFACE_SUPPORT,rsp,2);
-    // tmp = (uint16_t)(rsp[0] << 8) | rsp[1];    
-	// #if(DSP_LOG_ENABLED > 0)
-	// {
-	// 	Serial.print("HOST_INTERFACE_SUPPORT:");
-    // 	Serial.println(tmp,HEX);
-	// }
-	// #endif   
+    spiRegisterRead((uint16_t)HOST_INTERFACE_SUPPORT,rsp,2);
+    tmp = (uint16_t)(rsp[0] << 8) | rsp[1];    
+	#if(DSP_LOG_ENABLED > 0)
+	{
+		Serial.print("HOST_INTERFACE_SUPPORT:");
+    	Serial.println(tmp,HEX);
+	}
+	#endif   
 
 	//#clear register 14
 	do {
@@ -436,8 +467,8 @@ void DSPG::run(void)
     registerConfig();
     //check status
     checkStatus();
-    //modelLoad
-    modelLoad();
+    //modelLoad    
+	modelLoad(lpdwModel,modelSize); 
     //check status
     checkStatus();
 
@@ -517,14 +548,15 @@ void DSPG::registerConfig(void) {
 
 void DSPG::useCaseConfig(COMMAND *command, int command_sequence_length){
     uint8_t rsp[4];
+	uint8_t rspl[2];
     int i;
     for (i = 0; i < command_sequence_length; i++)
     {
         if (command[i].value_size == VAL_SHORT)
         {
-            rsp[0] = (uint8_t)((command[i].val & 0xFF00) >> 8);
-            rsp[1] = (uint8_t)(command[i].val & 0x00FF);
-            spiRegisterWrite(command[i].reg, rsp, 2);
+            rspl[0] = (uint8_t)((command[i].val & 0xFF00) >> 8);
+            rspl[1] = (uint8_t)(command[i].val & 0x00FF);
+            spiRegisterWrite(command[i].reg, rspl, 2);
         }
         else
         {
@@ -610,8 +642,19 @@ void DSPG::getChipID(void) {
 	#endif	
 }
 
-void DSPG::modelLoad(void) {
+int DSPG::SetActiveCommandGroup(int nGroupActive)
+{
+	g_nActiveCommandsGroup = nGroupActive;
+	if((g_nActiveCommandsGroup<=0) || (g_nActiveCommandsGroup>MAX_MODELS))
+	{
+		g_nActiveCommandsGroup = 1;
+		return -1;
+	}
+	return g_nActiveCommandsGroup;
+}
 
+void DSPG::modelLoad(const char *lpdwModel,int modelSize) 
+{
     uint8_t rsp[2];
     uint16_t tmp;
     spiRegisterRead((uint16_t)(VT_REG_INIT + VT1_REGS_OFFSET),rsp,2);
@@ -632,8 +675,35 @@ void DSPG::modelLoad(void) {
         rsp[0] = 0;
         rsp[1] = VT_ACTIVATE_MODEL_DSP;
         spiRegisterWrite((uint16_t)(VT1_REGS_OFFSET | VT_REG_ACTIVATE_MODEL_TYPE), rsp, 2);
-		LoadModel(cyberon, sizeof(cyberon), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		#if(DSP_LOG_ENABLED > 0)
+		{
+			Serial.printf("model size:%d\r\n",modelSize);
+		}
+		#endif			
+		LoadModel(lpdwModel, modelSize, MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+	
+		// switch(g_nActiveCommandsGroup)
+		// {
+		// 	case USE_MODEL_GROUP1:
+		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G2, sizeof(g_lpdwCyberon_RAK_model_G1G2), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		// 		break;
+		// 	case USE_MODEL_GROUP2:
+		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G3, sizeof(g_lpdwCyberon_RAK_model_G1G3), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		// 		break;
+		// 	case USE_MODEL_GROUP3:
+		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G4, sizeof(g_lpdwCyberon_RAK_model_G1G4), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		// 		break;
+		// 	case USE_MODEL_GROUP4:
+		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G5, sizeof(g_lpdwCyberon_RAK_model_G1G5), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		// 		break;
+		// 	default: 
+		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G2, sizeof(g_lpdwCyberon_RAK_model_G1G2), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		// 		break;
+		// }
+		// LoadModel(cyberon, sizeof(cyberon), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+	
 	}
+	/*	disable VT2 model 
 	//load sed model for VT2
     spiRegisterRead((uint16_t)(VT_REG_INIT + VT2_REGS_OFFSET),rsp,2);
     tmp = (uint16_t)(rsp[0] << 8) | rsp[1];
@@ -666,11 +736,13 @@ void DSPG::modelLoad(void) {
 		rsp[0] = 0;
         rsp[1] = 0x46;			
 		spiRegisterWrite((uint16_t)(vt_offset + VT_FE_DNN_PATCH_SIZE), 			rsp, 2);
+
+
 		LoadModel(sed, sizeof(sed), MODEL_TYPE_VT, MEM_TYPE_AHB, LOAD_ENGINE_TYPE_VT2, FILE_TYPE_DTE_PRIM_MODEL);
 	}
+	*/
 
 }
-
 uint32_t DSPG::calcCheckSum(const char * file, unsigned long fileLen, int skip_bytes)
 {
 	unsigned long currentfilePosition = 0;
@@ -1141,73 +1213,115 @@ void DSPG::deassertCS(void)
 void DSPG::echoCommands(void)
 {
 	int i;
-	Serial.println("********DSPG Triger Command***********");
-	int n = sizeof(cyberon_group1_commands)/sizeof(cyberon_group1_commands[0]);	
+	Serial.println("********Trigger Words***********");
+	int n = sizeof(cyberon_trigger_commands)/sizeof(cyberon_trigger_commands[0]);	
 	for(i=0;i<n;i++)
 	{
-	 Serial.println(cyberon_group1_commands[i]);
-	}
-	
-	Serial.println("********DSPG Detecting Command********");	
-	n = sizeof(cyberon_group2_commands)/sizeof(cyberon_group2_commands[0]);	
-	for(i=0;i<n;i++)
+	 Serial.println(cyberon_trigger_commands[i]);
+	}	
+
+	Serial.println("********Command Words*********");	
+
+	switch(g_nActiveCommandsGroup)
 	{
-	//  Serial.println(cyberon_group2_commands[i]);
-		Serial.printf("Command[%d]:  %s\r\n",i,cyberon_group2_commands[i]);
-	}
+		case USE_MODEL_GROUP1:
+			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
+			for(i=0;i<n;i++)
+			{
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+			}
+			break;
+		case USE_MODEL_GROUP2:
+			n = sizeof(g_cyberon_group2_commands)/sizeof(g_cyberon_group2_commands[0]);	
+			for(i=0;i<n;i++)
+			{
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group2_commands[i]);
+			}
+			break;
+		case USE_MODEL_GROUP3:
+			n = sizeof(g_cyberon_group3_commands)/sizeof(g_cyberon_group3_commands[0]);	
+			for(i=0;i<n;i++)
+			{			
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group3_commands[i]);
+			}
+			break;
+		case USE_MODEL_GROUP4:
+			n = sizeof(g_cyberon_group4_commands)/sizeof(g_cyberon_group4_commands[0]);	
+			for(i=0;i<n;i++)
+			{			
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group4_commands[i]);
+			}
+			break;
+		default:
+			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
+			for(i=0;i<n;i++)
+			{			
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+			}
+		break;
+	}	
 }
-void DSPG::eventCallBack(void)
+void DSPG::echoCommands(int nGroupChoose)
 {
-	uint16_t val;
-	uint16_t mics = 0;
-	int VT_offset;
-	uint8_t rsp[2];
-	char rsp_str[80];
-	int word_id;
-
-	uint16_t interrupt_events = dbmdx_read_register((uint16_t)(DETECT_AND_SYS_EVENTS));
-	dbmdx_write_register(DETECT_AND_SYS_EVENTS,interrupt_events);
-
-	Serial.printf("event value:%d\r\n",interrupt_events);
-	delay(20);
-
-	// if (event == VT1_DET) {VT_offset = VT1_REGS_OFFSET;}	
-	// else if (event == VT2_DET) {VT_offset = VT2_REGS_OFFSET;}	
-	VT_offset = VT1_REGS_OFFSET;	
+	int i;
+	// char (*cmd)[50] ;	
+	// char **cmd;
+	Serial.println("********Trigger Words***********");
 	
-	//get word ID
-	word_id = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_WORD_ID));
-    Serial.println("===============================");	
-    Serial.print("Word ID:");
- 	Serial.println(word_id);	
-	// uint16_t len = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_PHRASE_LENGTH));	//this value is no used
-    // Serial.print("Word ID Length:");
- 	// Serial.println(len);	
-	memset(rsp_str,0,80);
-	if(event!=0)	
-	if (word_id < 2000)
+	int n = sizeof(cyberon_trigger_commands)/sizeof(cyberon_trigger_commands[0]);	
+	for(i=0;i<n;i++)
 	{
-		cyberon_G1_count++;
-		word_id -= 1001;	
-		Serial.printf("Trigger ! - word_id %d\r\n", word_id);
-		sprintf(rsp_str, "Trigger ! %s, trigger counts = %d",cyberon_group1_commands[word_id],cyberon_G1_count);
-		Serial.println(rsp_str);	
-		Serial.println(cyberon_group1_commands[word_id]);	
+	 Serial.println(cyberon_trigger_commands[i]);
+	}	
 
-	}
-	else 
+	Serial.println("********Command Words*********");	
+	// cmd = getCommand(nGroupChoose,cmd);
+	// cmd = getCommand(nGroupChoose);
+	// n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
+	// cmd = g_cyberon_group1_commands;
+	// for(i=0;i<15;i++)
+	// {
+	// 	Serial.printf("cmd[%d]:\t\t%s\r\n",i,cmd[i]);
+	// }
+
+	switch(nGroupChoose)
 	{
-		cyberon_G2_count++;
-		word_id -= 2001;
-		Serial.printf("Detecting Command - word_id:%d\r\n",word_id);
-		sprintf(rsp_str, "Detecting ! %s, trigger counts = %d",cyberon_group2_commands[word_id],cyberon_G2_count);
-		Serial.println(rsp_str);
-		Serial.println(cyberon_group2_commands[word_id]);	
-	}
-	
-    Serial.println("===============================");	
-	event = false;
-	//mode(USE_CASE_ENTER_DECT_MODE);
+		case USE_MODEL_GROUP1:	
+			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);			
+			for(i=0;i<n;i++)
+			{
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+			}
+			break;
+		case USE_MODEL_GROUP2:
+			n = sizeof(g_cyberon_group2_commands)/sizeof(g_cyberon_group2_commands[0]);	
+			for(i=0;i<n;i++)
+			{
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group2_commands[i]);
+			}
+			break;
+		case USE_MODEL_GROUP3:
+			n = sizeof(g_cyberon_group3_commands)/sizeof(g_cyberon_group3_commands[0]);	
+			for(i=0;i<n;i++)
+			{			
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group3_commands[i]);
+			}
+			break;
+		case USE_MODEL_GROUP4:
+			n = sizeof(g_cyberon_group4_commands)/sizeof(g_cyberon_group4_commands[0]);	
+			for(i=0;i<n;i++)
+			{			
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group4_commands[i]);
+			}
+			break;
+		default:
+			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
+			for(i=0;i<n;i++)
+			{			
+				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+			}
+		break;
+	}	
 }
 
 void DSPG::eventCallBack(char *command,int *command_id)
@@ -1215,9 +1329,8 @@ void DSPG::eventCallBack(char *command,int *command_id)
 	uint16_t val;
 	uint16_t mics = 0;
 	int VT_offset;
-
-	char rsp_str[80]; 
-	int word_id;
+	char rsp_str[100]; 
+	int word_id = 0;
 
 	//clear interrupt
 	uint16_t interrupt_events = dbmdx_read_register((uint16_t)(DETECT_AND_SYS_EVENTS));
@@ -1231,14 +1344,11 @@ void DSPG::eventCallBack(char *command,int *command_id)
 	}
 	#endif	
 	delay(20);
-
 	// if (event == VT1_DET) {VT_offset = VT1_REGS_OFFSET;}	
 	// else if (event == VT2_DET) {VT_offset = VT2_REGS_OFFSET;}	
-	VT_offset = VT1_REGS_OFFSET;	
-	
+	VT_offset = VT1_REGS_OFFSET;		
 	//get word ID
-	word_id = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_WORD_ID));
-   
+	word_id = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_WORD_ID));   
 	#if(DSP_LOG_ENABLED >= 1)
 	{		
 		Serial.print("Word ID:");
@@ -1249,51 +1359,61 @@ void DSPG::eventCallBack(char *command,int *command_id)
 	// uint16_t len = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_PHRASE_LENGTH));	//this value is no used
     // Serial.print("Word ID Length:");
  	// Serial.println(len);	
-	memset(rsp_str,0,80);
-	if(interrupt_events!=0)	
+	memset(rsp_str,0,100);
+	// if(interrupt_events!=0)	
+	if(interrupt_events == 2)	
 	{
+		*command_id = word_id;
+
 		if (word_id < 2000)
 		{
 			cyberon_G1_count++;
-			word_id -= 1001;	
-
-			*command_id = word_id;
+			word_id -= 1001;
 			
-			sprintf(rsp_str, "Trigger ! %s, trigger counts = %d",cyberon_group1_commands[word_id],cyberon_G1_count);
-			#if(DSP_LOG_ENABLED >= 1)
-			{
-				Serial.printf("Trigger ! - word_id %d\r\n", word_id);			
-				Serial.println(rsp_str);	
-				Serial.println(cyberon_group1_commands[word_id]);
-			}
-			#endif
-			memcpy(command,cyberon_group1_commands[word_id],sizeof(cyberon_group1_commands[word_id]));	
-			
+			// sprintf(rsp_str, "Trigger ! %s, trigger counts = %d",cyberon_trigger_commands[word_id],cyberon_G1_count);
+			sprintf(rsp_str,"%s",cyberon_trigger_commands[word_id]);
+			// #if(DSP_LOG_ENABLED >= 1)
+			// {
+			// 	Serial.printf("Trigger ! - word_id %d\r\n", word_id);			
+			// 	Serial.println(rsp_str);	
+			// 	Serial.println(cyberon_trigger_commands[word_id]);
+			// }
+			// #endif
+			memcpy(command,cyberon_trigger_commands[word_id],sizeof(cyberon_trigger_commands[word_id]));
 		}
 		else 
 		{
 			cyberon_G2_count++;
-			word_id -= 2001;
+			word_id -= 2001;	
 
-			*command_id = word_id;	
-			
-			sprintf(rsp_str, "Detecting ! %s, trigger counts = %d",cyberon_group2_commands[word_id],cyberon_G2_count);
-			#if(DSP_LOG_ENABLED >= 1)
+			switch(g_nActiveCommandsGroup)
 			{
-				Serial.printf("Detecting Command - word_id:%d\r\n",word_id);
-				Serial.println(rsp_str);
-				Serial.println(cyberon_group2_commands[word_id]);	
-			}
-			#endif
-			memcpy(command,cyberon_group2_commands[word_id],sizeof(cyberon_group2_commands[word_id]));
-			
+				case USE_MODEL_GROUP1:	
+					// sprintf(rsp_str, "Detecting ! %s, trigger counts = %d",g_cyberon_group1_commands[word_id],cyberon_G2_count);
+					sprintf(rsp_str, "%s",g_cyberon_group1_commands[word_id],cyberon_G2_count);
+					memcpy(command,g_cyberon_group1_commands[word_id],sizeof(g_cyberon_group1_commands[word_id]));	
+					break;
+				case USE_MODEL_GROUP2:
+					// sprintf(rsp_str, "Detecting ! %s, trigger counts = %d",g_cyberon_group2_commands[word_id],cyberon_G2_count);
+					sprintf(rsp_str, "%s",g_cyberon_group2_commands[word_id],cyberon_G2_count);
+					memcpy(command,g_cyberon_group2_commands[word_id],sizeof(g_cyberon_group2_commands[word_id]));	
+					break;
+				case USE_MODEL_GROUP3:		
+					// sprintf(rsp_str, "Detecting ! %s, trigger counts = %d",g_cyberon_group3_commands[word_id],g_cyberon_group3_commands);
+					sprintf(rsp_str, "%s",g_cyberon_group3_commands[word_id],g_cyberon_group3_commands);
+					memcpy(command,g_cyberon_group3_commands[word_id],sizeof(g_cyberon_group3_commands[word_id]));	
+					break;
+				case USE_MODEL_GROUP4:			
+					// sprintf(rsp_str, "Detecting ! %s, trigger counts = %d",g_cyberon_group4_commands[word_id],g_cyberon_group4_commands);
+					sprintf(rsp_str, "%s",g_cyberon_group4_commands[word_id],g_cyberon_group4_commands);
+					memcpy(command,g_cyberon_group4_commands[word_id],sizeof(g_cyberon_group4_commands[word_id]));	
+					break;
+				default:	
+				break;
+			}						
 		}
 	}
-	else
-	{
-		*command_id = 0;
-		memcpy(command,cyberon_group1_commands[0],sizeof(cyberon_group1_commands[0]));	
-	}
+
 	#if(DSP_LOG_ENABLED >= 1)
 	{
 		Serial.println("===============================");		
@@ -1316,8 +1436,8 @@ void DSPG::mode(DSPG_MODE m)
 			Serial.println();
 			Serial.println("LoadModel AsrpParams_Melon_Aec_1Mic_1Spk_v393x_T42_P16");
 		}
-		#endif
-		
+		#endif	
+
 		LoadModel(AsrpParams_Melon_Aec_1Mic_1Spk_v393x_T42_P16, sizeof(AsrpParams_Melon_Aec_1Mic_1Spk_v393x_T42_P16), 
 				MODEL_TYPE_ASRP, MEM_TYPE_AHB, LOAD_ENGINE_TYPE_ASRP, FILE_TYPE_ASRP_PARAMS_PRIM_INIT);
 		useCaseConfig(RT_CMD_D10L_evb_bargein_1mic_enter,RT_CMD_D10L_evb_bargein_1mic_enter_length);
@@ -1375,21 +1495,29 @@ uint16_t DSPG::dbmdx_read_register(int16_t reg)
 	int ret;
 	char Write_Read_Buff[10] = {0};
 	char RegSet[18] = {0};
-#if(DBG_PRINT_CMDLOG==1) 	
+#if(DBG_PRINT_CMDLOG>=1) 	
 	char reg_str[8];
 	char val_str[8];
 #endif
 
-#if(DBG_PRINT_CMDLOG==1) 
+#if defined(_VARIANT_RAK11200_)
+	SPI_USER.end();
+	// begin SPI
+  	SPI_USER.begin();
+#endif
+
+#if(DBG_PRINT_CMDLOG>=1) 
 	sprintf(reg_str, "%03x", reg);
 #endif
 
 	sprintf(RegSet, "%03xr", reg);
 	spiWrite(RegSet, strlen(RegSet));
-	if(ret < 0) {
-		Serial.printf("[%s]: device_write error.\n", __func__);
-		return 0;
-	}
+	// #if(DBG_PRINT_CMDLOG>=1) 
+	//  {
+	// 	// Serial.printf("[%s]: device_write error.\n", __func__);		
+	// 	Serial.printf("%s: \n", );		
+	// }
+	// #endif
 
 #ifdef USE_FW_READY
 	if (fw_ready_configured == 1)
@@ -1413,7 +1541,7 @@ uint16_t DSPG::dbmdx_read_register(int16_t reg)
 	}
 
 
-#if(DBG_PRINT_CMDLOG==1) 
+#if(DBG_PRINT_CMDLOG>=1) 
 	sprintf(val_str, "%04x", (val)&0xffff);
 	Serial.printf("DBMD Reading reg: 0x%s  ; value: 0x%s\n",reg_str, val_str);
 #endif
@@ -1425,13 +1553,19 @@ void DSPG::dbmdx_write_register(int16_t reg, int16_t val)
 {
 	int ret;
 	char str[16];
-#if(DBG_PRINT_CMDLOG==1) 
+#if(DBG_PRINT_CMDLOG>=1) 
 	char reg_str[8];
 	char val_str[8];
 #endif
 
+#if defined(_VARIANT_RAK11200_)
+	SPI_USER.end();
+	// begin SPI
+  	SPI_USER.begin();
+#endif
+
 	sprintf(str, "%03xw%04x", reg, (val)&0xffff);
-#if(DBG_PRINT_CMDLOG==1) 
+#if(DBG_PRINT_CMDLOG>=1) 
 	sprintf(reg_str, "%03x", (reg)&0xfff);
 	sprintf(val_str, "%04x", (val)&0xffff);
 	Serial.printf("DBMD Writing reg: 0x%s  ; value: 0x%s\n",reg_str, val_str);

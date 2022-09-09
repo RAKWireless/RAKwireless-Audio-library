@@ -49,12 +49,12 @@ void setup() {
   //rp2040
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, HIGH);
+  delay(500);
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, HIGH);
 
-  Serial.begin(115200);
   // Initialize Serial for debug output
   time_t timeout = millis();
   Serial.begin(115200);
@@ -210,7 +210,6 @@ void loop() {
 
   // Clear the read count
   samplesRead = 0;
-
 }
 
 /**
@@ -236,14 +235,16 @@ void onPDMdata() {
 }
 void RAK18003Init(void)
 {
-  if (!Expander1.begin())
+  while (!Expander1.begin())
   {
-    Serial.println("Did not find IO Expander Chip1");
+    Serial.println("Did not find RAK18003 IO Expander Chip1,please check!");
+    delay(500);
   }
 
-  if (!Expander2.begin())
+  while (!Expander2.begin())
   {
-    Serial.println("Did not find IO Expander Chip2");
+    Serial.println("Did not find RAK18003 IO Expander Chip2,please check!");
+    delay(500);
   }
   Expander1.pinMode(0, INPUT);    //SD check
   Expander1.pinMode(1, INPUT);    //MIC check
@@ -288,8 +289,9 @@ void RAK18003Init(void)
 
   Expander2.digitalWrite(3, 0);   //set the PDM data direction from MIC to WisCore
 
-  if (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
+  while (Expander1.digitalRead(1) == 0) //Check if the microphone board is connected on the RAK18003
   {
     Serial.println("There is no microphone board, please check !");
+    delay(500);
   }
 }

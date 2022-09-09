@@ -13,7 +13,7 @@ void rgb_init() {
   // If using Native I2C
   Wire.begin();
   Wire.setClock(100000);
-  Serial.println("RAK14001 RGB LED Test");
+//  Serial.println("RAK14001 RGB LED Test");
   if (!rgb.begin())
   {
     Serial.println("RAK14001 not found on the I2C line");
