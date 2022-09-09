@@ -163,7 +163,7 @@ The examples can be separated 4 parts. The test code is just for test and can be
     
        This example use RAK18030/1/2+RAK18003+RAK18060+RAK18080+RAK11200.When say the trigger words wakes up the WisCore then say command words it will print the recognized command and ID number by  serial port.
        
-       ![DSPG_play](C:\Users\RAK\Documents\Arduino\libraries\RAKwireless-Audio-library\assets\DSPG_play.jpg)
+       ![](assets/DSPG_play.jpg)
     
       
 
