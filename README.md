@@ -65,7 +65,9 @@ Please update BSP part to the last version, which will support basic driver.
 
 #### Rakwireless Audio library
 
-Then install audio library, which contains other part of driver, like amplifier, DSPG. And includes all examples and solutions.
+Then install audio library, which contains other part of driver, like amplifier, DSPG. And includes all examples and solutions. Because of the technical problem, it is not merged in IDE now. Please download ZIP from:  https://github.com/RAKWireless/RAKwireless-Audio-library  And then install manually.
+
+![](assets/install.jpg)
 
 
 
