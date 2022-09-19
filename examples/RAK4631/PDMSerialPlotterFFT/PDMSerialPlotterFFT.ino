@@ -75,7 +75,7 @@ void loop() {
 
     if(first_flag>5)   //because the all of first IRQ read data is 0
     {  
-      Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency); 
+      float freq = Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency); 
 //      for (int j=0; j<BUFFER_SIZE; j++){
 //       Serial.println(approxBuffer[j]);
 //      }    
@@ -84,7 +84,11 @@ void loop() {
 
       for (int j=0; j<500; j++)
       {
-        Serial.println(print_string[j]);
+        Serial.print("Frequency:");
+        Serial.print(print_string[j]);
+        Serial.print(",");
+        Serial.print(String(freq)+":");
+        Serial.println(freq);
       }  
       delay(1000);
     }  
