@@ -197,13 +197,27 @@ The examples can be separated 4 parts. The test code is just for test and can be
   
   ![play3](assets/play3.png)
 
-#### How to general header from
+#### How to general header from WAV
 
-####  WAV
+First you need put your WAV file with the WAVconvert.py  in the same folder.
 
-Please use the python in tool, and put your WAV at the same place, run **python .\WAVconvert.py**
+![](assets/convert1.png)
 
-![](assets/python.jpg)
+Second, run the CMD console program.
+
+![](assets/convert2.png)
+
+Third, enter the "**python ./WAVconvert.py**" command and run .If your computer not installed the Python environment you can download the python by this link：https://www.python.org/downloads/.
+
+![](assets/convert3.png)
+
+After convert done, the converted .h file name is the same as your  WAV name.
+
+![](assets/convert4.png)
+
+Then, open the .h file and copy the sound buffer to replace the example's sound buffer.
+
+![](assets/convert5.png)
 
 
 

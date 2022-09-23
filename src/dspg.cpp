@@ -31,18 +31,24 @@ void DSPG::i2sInit(void)
 {
 #if defined(_VARIANT_RAK11200_)
   I2S.setSampleBit(16);
-  I2S.begin(2, 48000);
+  I2S.begin(2, 16000);
 #elif defined(_VARIANT_RAK11300_) // for RAK11300
-//   I2S i2s(OUTPUT);
-//   i2s.setBitsPerSample(16); 
-//  // start I2S at the sample rate with 16-bits per sample
-//   i2s.begin(48000);
   RP2040_I2S.setBitsPerSample(16); 
  // start I2S at the sample rate with 16-bits per sample
-  RP2040_I2S.begin(48000);
+  RP2040_I2S.begin(16000);
 #else							  // for RAK4630
-  I2S.begin(Stereo,48000,16);
+  I2S.begin(Stereo,16000,16);
   I2S.start();
+ #endif
+}
+void DSPG::i2sEnd(void)
+{
+#if defined(_VARIANT_RAK11200_)  
+  I2S.end();
+#elif defined(_VARIANT_RAK11300_) // for RAK11300
+  RP2040_I2S.end();
+#else							  // for RAK4630  
+  I2S.end();
  #endif
 }
 int DSPG::ioExpanderInit(void)
@@ -217,13 +223,107 @@ int DSPG::begin(const char *lpdwModel,int modelSize)
   
   event = false;
 
+  // begin UART
+//   Serial1.begin(921600);
+
   return 0;
 }
+void DSPG::end(void)
+{
+	SPI_USER.end();
+	i2sEnd();
+	delectDetectedCallback();
+}
+void DSPG::uartSync()
+{
+	uint32_t rc;
+	char buf_sync[UART_SYNC_LEN] = {0};
+	int i;
+	char c[4] = {0};
+	int size = 3;
+	unsigned char buff_tmp[64] = {0};
+
+	Serial.println("start boot sync");
+	
+	for (i = 0; i < size; i++) {
+		rc = uartWrite(buf_sync, UART_SYNC_LEN);
+		if (rc != UART_SYNC_LEN)
+			Serial.println("sync buffer not sent correctly");
+
+		Serial.println("sync buffer  sent correctly");
+		uartRead(c, 4);
+		Serial.println("sync read buffer");
+
+        Serial.print("sync c:");
+        Serial.print(c[0], HEX);    
+        Serial.print(c[1], HEX);
+        Serial.print(c[2], HEX);
+        Serial.println(c[3], HEX);
+
+		if(!strcmp("OK\n\r", c)) {
+			Serial.println("UART Got Sync.");
+			break;
+		} else {
+			Serial.println("Failed Sync UART");
+		}
+	}
+
+	if(i == size) {
+		Serial.println("Failed Sync UART");
+	}
+	Serial.println("boot sync successfully");
+}
+
+uint32_t DSPG::uartRegisterWrite(uint16_t reg, uint8_t *value, int length)  
+{  
+	char st[16];
+	memset(st,0,16);
+	sprintf(st,"%2xw%2x%2x", reg, value[0],value[1]);
+	return uartWrite(st,7);
+}
+
+void DSPG::uartRegisterRead(uint16_t reg, uint8_t *data,int length) 
+{
+	char st[16];
+	memset(st,0,16);
+	sprintf(st,"%2xr", reg);
+	uartWrite(st,3);
+	fwReady();
+	memset(st,0,16);	
+	uartRead(st,2);
+	data[0] = st[0];
+	data[1] = st[1];	
+}
+
+uint32_t DSPG::uartWrite(char *value, int length)  
+{  
+	uint32_t i = Serial1.write(value,length); 
+  	return i;
+}
+
+void DSPG::uartRead(char *value, int length)  
+{  
+	int timeout = 100;
+	uint8_t i = 0;
+	while (timeout--)
+	{
+		if (Serial1.available() > 0)
+		{
+			value[i++] = char(Serial1.read());
+		}
+	}
+}
+
+
 void DSPG::detectedCallback(void(*function)(void))
 {
  //config interrupt
  pinMode(FW_INT_PIN, INPUT_PULLUP); 
  attachInterrupt(FW_INT_PIN, function,CHANGE);
+}
+void DSPG::delectDetectedCallback(void)
+{
+  detachInterrupt(FW_INT_PIN);
 }
 void DSPG::readCheckSum(char *checksum , core_t core)
 {
@@ -680,27 +780,7 @@ void DSPG::modelLoad(const char *lpdwModel,int modelSize)
 			Serial.printf("model size:%d\r\n",modelSize);
 		}
 		#endif			
-		LoadModel(lpdwModel, modelSize, MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
-	
-		// switch(g_nActiveCommandsGroup)
-		// {
-		// 	case USE_MODEL_GROUP1:
-		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G2, sizeof(g_lpdwCyberon_RAK_model_G1G2), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
-		// 		break;
-		// 	case USE_MODEL_GROUP2:
-		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G3, sizeof(g_lpdwCyberon_RAK_model_G1G3), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
-		// 		break;
-		// 	case USE_MODEL_GROUP3:
-		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G4, sizeof(g_lpdwCyberon_RAK_model_G1G4), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
-		// 		break;
-		// 	case USE_MODEL_GROUP4:
-		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G5, sizeof(g_lpdwCyberon_RAK_model_G1G5), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
-		// 		break;
-		// 	default: 
-		// 		LoadModel(g_lpdwCyberon_RAK_model_G1G2, sizeof(g_lpdwCyberon_RAK_model_G1G2), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
-		// 		break;
-		// }
-		// LoadModel(cyberon, sizeof(cyberon), MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);
+		LoadModel(lpdwModel, modelSize, MODEL_TYPE_VT, MEM_TYPE_DTCM, LOAD_ENGINE_TYPE_VT1, FILE_TYPE_DTE_PRIM_MODEL);		
 	
 	}
 	/*	disable VT2 model 
