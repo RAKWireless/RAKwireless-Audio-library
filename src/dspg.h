@@ -45,6 +45,8 @@
 #undef FW_DEBUG_DISABLE
 #define HOST_BOOT
 
+#define UC_BARGE_IN_TDM_SAMPLE_RATE_48000		0   //to select I2S frequency 48KHz or 16KHz
+
 #define USE_HIGHER_GPIO_AT_3V3		  	0   //1			// 0 - Use Higher GPIO at 1.8 V, 1 - Use Higher GPIO at 3.3 V
 #define USE_HIGHER_GPIO					1			// 0 - Only Use GPIO from 0 to 18, 1 - Use GPIO from 0 to 18 with Higher GPIOs 19 to 30
 #define USE_TDM1_ON_HIGHER_GPIO			1
@@ -63,7 +65,7 @@
 #define MODEL_TYPE_VT		0
 #define MODEL_TYPE_ASRP		1
 #define MODEL_TYPE_COMMAND 	2
-#define UART_SYNC_LEN 16
+#define UART_SYNC_LEN       16
 
 
 const uint8_t D10L_SCK = SCK;
@@ -74,7 +76,7 @@ const uint8_t D10L_CS = SS;
 #define FW_RESET_PIN    WB_IO4
 #define FW_INT_PIN      WB_IO1
 
-#define DSP_LOG_ENABLED     0
+// #define DSP_LOG_ENABLED     0
 #define DBG_PRINT_CMDLOG	0
 
 
@@ -133,6 +135,7 @@ public:
     DSPG();
     virtual ~DSPG();
     int begin(const char *lpdwModel,int modelSize);
+    void end(void);
     void readCheckSum(char *checksum , core_t core);
     void loadFile(const char * file, unsigned long fileLen, core_t core, int skip_bytes);
     int config(void); 
@@ -183,12 +186,19 @@ private:
     void assertCS(void);
     void deassertCS(void);
     void i2sInit(void);
-    
+    void i2sEnd(void);
     unsigned int atoh__(const char *String);
     uint16_t dbmdx_read_register(int16_t reg);
     void dbmdx_write_register(int16_t reg, int16_t val);
     uint32_t dbmdx_read_register_long(core_t core, int16_t reg);
     void dbmdx_write_register_long(core_t core, int16_t reg, int32_t val);
+    void delectDetectedCallback(void);
+
+    void uartSync();
+    uint32_t uartRegisterWrite(uint16_t reg, uint8_t *value, int length); 
+    void uartRegisterRead(uint16_t reg, uint8_t *data,int length); 
+    uint32_t uartWrite(char *value, int length);  
+    void uartRead(char *value, int length);  
 
     int g_nActiveCommandsGroup = 1;
 };
