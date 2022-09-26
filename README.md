@@ -69,6 +69,9 @@ Then install audio library, which contains other part of driver, like amplifier,
 
 ![](assets/install.jpg)
 
+But if you use Arduino 2.0 released version, you can install it in library manager.
+
+![](assets/2.0.jpg)
 
 
 ## Examples & Solutions
