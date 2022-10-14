@@ -76,7 +76,7 @@ const uint8_t D10L_CS = SS;
 #define FW_RESET_PIN    WB_IO4
 #define FW_INT_PIN      WB_IO1
 
-// #define DSP_LOG_ENABLED     0
+#define DSP_LOG_ENABLED     0
 #define DBG_PRINT_CMDLOG	0
 
 
@@ -135,7 +135,7 @@ public:
     DSPG();
     virtual ~DSPG();
     int begin(const char *lpdwModel,int modelSize);
-    void end(void);
+    void end(void);  
     void readCheckSum(char *checksum , core_t core);
     void loadFile(const char * file, unsigned long fileLen, core_t core, int skip_bytes);
     int config(void); 

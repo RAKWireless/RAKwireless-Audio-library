@@ -100,6 +100,10 @@ if (!tpt29555_1.begin())
 	tpt29555_2.pinMode(14, OUTPUT);	//
 	tpt29555_2.pinMode(15, OUTPUT); //
 
+	tpt29555_2.digitalWrite(0, 1);	//set SD SPI CS high
+	tpt29555_2.digitalWrite(1, 1);	//set SD SPI CS high
+	tpt29555_2.digitalWrite(2, 1);	//set SD SPI CS high
+
 	return 0;
 }
 int DSPG::sdCheck(void)
