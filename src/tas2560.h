@@ -5,7 +5,7 @@
 #include <Wire.h>
 #include "tas2560reg.h"
 
-#define ALARM_PIN   WB_IO4
+#define ALARM_PIN   WB_IO1
 
 class TAS2560
 {
@@ -26,8 +26,8 @@ public:
   uint8_t get_pcm_word_length(void);
   uint8_t set_pcm_channel(ASI_channel mode);
   uint8_t get_pcm_channel(void);
-  uint8_t set_volume(uint8_t gain);
-  uint8_t get_volume(void);
+  uint8_t set_gain(uint8_t gain); //Set the gain of the AMP, the setting range is 0-15dB default is 15.
+  uint8_t get_gain(void);
 
   void set_mute(void);
   void set_alarm_pin(void(*function)(void));
@@ -37,15 +37,21 @@ public:
   void set_alarm(void);
   uint8_t get_alarm(void);
   uint8_t set_speaker_load(uint8_t impedance);
+  uint8_t get_speaker_load(void);
   uint8_t read_INT_DET1(void);
   uint8_t read_INT_DET2(void);
+  unsigned int clear_interrupt(void);
+
+  void clear_alarm(void);
+  unsigned int read_alarm(void);
 
 private:
 
   uint8_t i2c_addr; //the  deviceaddress
   TwoWire *_wire;   //the  i2c port interface
   int _alarm_pin;   //read alarm pin
-
+  uint8_t volume;
+  void write_page(void);
   void writeRegister(uint8_t registerAddress, uint8_t *writeData, uint8_t size);
   void readRegister(uint8_t registerAddress, uint8_t *readData, uint8_t size); 
 };

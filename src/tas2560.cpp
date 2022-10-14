@@ -32,6 +32,7 @@ bool TAS2560::begin(uint8_t addr,TwoWire &theWire) //Sets up the Hardware
    if(amp_i2c.begin(i2c_addr))
    {
     transmit_registers(registers,sizeof(registers)/2); 
+    set_alarm();
     return true;
    } 
   #else
@@ -42,6 +43,7 @@ bool TAS2560::begin(uint8_t addr,TwoWire &theWire) //Sets up the Hardware
   if (_wire->endTransmission() == 0) {
     
     transmit_registers(registers,sizeof(registers)/2);
+    set_alarm();
     return true;
   }
   #endif
@@ -54,7 +56,8 @@ bool TAS2560::begin(uint8_t addr) //Sets up the Hardware
    amp_i2c.set_pin(SDA,SCL);
    if(amp_i2c.begin(i2c_addr))
    {
-    transmit_registers(registers,sizeof(registers)/2);      
+    transmit_registers(registers,sizeof(registers)/2);  
+    set_alarm();    
     return true;
    }  
   #else
@@ -65,6 +68,7 @@ bool TAS2560::begin(uint8_t addr) //Sets up the Hardware
   if (_wire->endTransmission() == 0) {
     
     transmit_registers(registers,sizeof(registers)/2); 
+    set_alarm();
     return true;
   } 
   #endif  
@@ -77,6 +81,7 @@ bool TAS2560::begin(void) //Sets up the Hardware
    if(amp_i2c.begin(i2c_addr));
    {
     transmit_registers(registers,sizeof(registers)/2);    
+    set_alarm();
     return true;
    }     
   #else
@@ -87,6 +92,7 @@ bool TAS2560::begin(void) //Sets up the Hardware
   if (_wire->endTransmission() == 0) {
     
     transmit_registers(registers,sizeof(registers)/2); 
+    set_alarm();
     return true;
   }  
   #endif 
@@ -226,6 +232,7 @@ void TAS2560::reset(void)
   writeRegister8(TAS25X_RESET,1);   //reset chip
   delay(5);
 }
+
 /**
  * @brief set ASI PCM input word length
  * @param length:the length
@@ -302,7 +309,7 @@ uint8_t TAS2560::get_pcm_channel(void)
  * @param uint8_t gain can set from 0-15
  * @return the register of TAS25X_SPK_CTRL
  */
-uint8_t TAS2560::set_volume(uint8_t gain)
+uint8_t TAS2560::set_gain(uint8_t gain)
 {
   uint8_t reg = readRegister8(TAS25X_SPK_CTRL);
   reg = reg&(~0x0f);
@@ -315,7 +322,7 @@ uint8_t TAS2560::set_volume(uint8_t gain)
  * @param void
  * @return the register of TAS25X_SPK_CTRL
  */
-uint8_t TAS2560::get_volume(void)
+uint8_t TAS2560::get_gain(void)
 {
   uint8_t reg = readRegister8(TAS25X_SPK_CTRL);  
   reg = reg&0x0f;
@@ -370,7 +377,7 @@ void TAS2560::set_alarm_pin(void(*function)(void))
     RISING low-to-high trigger
     FALLING high-to-low trigger
   */
-  attachInterrupt(digitalPinToInterrupt(_alarm_pin), function, FALLING);//
+  attachInterrupt(digitalPinToInterrupt(_alarm_pin), function, RISING);//
 }
 /**
  * @brief get the chip die temperature 
@@ -388,6 +395,11 @@ uint16_t TAS2560::get_vbat(void)
   reg16 = (reg16<<8) | readRegister8(TAS25X_SAR_VBAT_LSB);
   reg16 = (reg16&0X3f)>>6;
   return reg16;
+}
+void TAS2560::write_page(void)
+{
+  writeRegister8(TAS25X_PAGE,0x00); 
+  writeRegister8(TAS25X_BOOK,0x00); 
 }
 void TAS2560::set_alarm(void)
 {
@@ -428,11 +440,15 @@ void TAS2560::set_alarm(void)
                       0 = Clear (not used)
                       1 = Set (used)
                       */
+  
+  write_page();  
+  writeRegister8(TAS25X_INT_CFG_2,0);
+  // uint8_t read1  = readRegister8( TAS25X_INT_DET_1);
+  // uint8_t read2 = readRegister8( TAS25X_INT_DET_2);
+  writeRegister8(TAS25X_IRQ_PIN_CFG,0x41);  //0x41
+  writeRegister8(TAS25X_INT_CFG_1,0x80); 
   writeRegister8(TAS25X_INT_CFG_2,reg.data);
-  uint8_t read = readRegister8(TAS25X_INT_CFG_2);
-  writeRegister8(TAS25X_IRQ_PIN_CFG,0x42);  
-  writeRegister8(TAS25X_INT_CFG_1,0x20); 
-
+  // uint8_t read = readRegister8(TAS25X_INT_CFG_2);
 }
 uint8_t TAS2560::get_alarm(void)
 {
@@ -485,3 +501,162 @@ uint8_t TAS2560::set_speaker_load(uint8_t impedance)
   writeRegister8(TAS25X_EDGE_ISNS_BOOST,reg);
   return reg;
 }
+uint8_t TAS2560::get_speaker_load(void)
+{
+  uint8_t ret = 0;
+  uint8_t value = readRegister8(TAS25X_EDGE_ISNS_BOOST);
+
+	value = (value&0x18) >> 3;
+
+	switch (value) {
+	case 0:
+		ret = 8;
+		break;
+	case 1:
+		ret = 6;
+		break;
+	case 2:
+		ret = 4;
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+unsigned int TAS2560::read_alarm(void)
+{
+	unsigned int mnErrCode = 0;
+	unsigned int nDevInt1Status = 0, nDevInt2Status = 0;
+	
+	writeRegister8(TAS25X_INT_CFG_2, 0x00); //clear interrupt reg
+	nDevInt1Status = readRegister8( TAS25X_INT_DET_1);
+	nDevInt2Status = readRegister8( TAS25X_INT_DET_2);
+  // Serial.printf( "IRQ critical Error : 0x%x, 0x%x\n",	nDevInt1Status, nDevInt2Status);
+	if (((nDevInt1Status & 0xfc) != 0) || ((nDevInt2Status & 0xc0) != 0)) {
+		/* in case of INT_OC, INT_UV, INT_OT, INT_BO, INT_CL, INT_CLK1, INT_CLK2 */	    
+    
+	} else {
+		// Serial.printf( "IRQ status : 0x%x, 0x%x\n",	nDevInt1Status, nDevInt2Status);			
+      nDevInt1Status = 0;     
+		} 
+    writeRegister8( TAS25X_INT_CFG_2, 0xff);
+    return nDevInt1Status;
+}
+
+void TAS2560::clear_alarm(void)
+{
+  // writeRegister8(TAS25X_INT_CFG_2, 0x00); //clear interrupt reg			
+  volume = get_gain();
+  // Serial.println("config tas2560");
+  reset();
+  transmit_registers(registers,sizeof(registers)/2);
+  set_gain(volume);
+  set_alarm();  
+}
+
+unsigned int TAS2560::clear_interrupt(void)
+{
+	unsigned int mnErrCode = 0;
+	unsigned int nDevInt1Status = 0, nDevInt2Status = 0;
+	int nCounter = 2;
+
+	writeRegister8(TAS25X_INT_CFG_2, 0x00); //clear interrupt reg
+	nDevInt1Status = readRegister8( TAS25X_INT_DET_1);
+	nDevInt2Status = readRegister8( TAS25X_INT_DET_2);
+
+  Serial.printf( "IRQ critical Error : 0x%x, 0x%x\n",	nDevInt1Status, nDevInt2Status);
+
+	if (((nDevInt1Status & 0xfc) != 0) || ((nDevInt2Status & 0xc0) != 0)) {
+		/* in case of INT_OC, INT_UV, INT_OT, INT_BO, INT_CL, INT_CLK1, INT_CLK2 */		
+
+		if (nDevInt1Status & 0x80) {
+			mnErrCode |= ERROR_OVER_CURRENT;
+			Serial.printf( "SPK over current!\n");
+		} else
+			mnErrCode &= ~ERROR_OVER_CURRENT;
+
+		if (nDevInt1Status & 0x40) {
+			mnErrCode |= ERROR_UNDER_VOLTAGE;
+			Serial.printf( "SPK under voltage!\n");
+		} else
+			mnErrCode &= ~ERROR_UNDER_VOLTAGE;
+
+		if (nDevInt1Status & 0x20) {
+			mnErrCode |= ERROR_CLK_HALT;
+			Serial.printf( "clk halted!\n");
+		} else
+			mnErrCode &= ~ERROR_CLK_HALT;
+
+		if (nDevInt1Status & 0x10) {
+			mnErrCode |= ERROR_DIE_OVERTEMP;
+			Serial.printf( "die over temperature!\n");
+		} else
+			mnErrCode &= ~ERROR_DIE_OVERTEMP;
+
+		if (nDevInt1Status & 0x08) {
+			mnErrCode |= ERROR_BROWNOUT;
+			Serial.printf( "brownout!\n");
+		} else
+			mnErrCode &= ~ERROR_BROWNOUT;
+
+		if (nDevInt1Status & 0x04) {
+			mnErrCode |= ERROR_CLK_LOST;
+		} else
+			mnErrCode &= ~ERROR_CLK_LOST;
+
+		if (nDevInt2Status & 0x80) {
+			mnErrCode |= ERROR_CLK_DET1;
+			Serial.printf( "clk detection 1!\n");
+		} else
+			mnErrCode &= ~ERROR_CLK_DET1;
+
+		if (nDevInt2Status & 0x40) {
+			mnErrCode |= ERROR_CLK_DET2;
+			Serial.printf( "clk detection 2!\n");
+		} else
+			mnErrCode &= ~ERROR_CLK_DET2;
+		
+    volume = get_gain();
+    Serial.println("config tas2560");
+    reset();
+    transmit_registers(registers,sizeof(registers)/2);
+    set_gain(volume);
+    set_alarm();
+	} else {
+		    // Serial.printf( "IRQ status : 0x%x, 0x%x\n",	nDevInt1Status, nDevInt2Status);			
+
+      nCounter = 2;
+      while (nCounter > 0) 
+      {
+        nDevInt1Status = readRegister8(TAS25X_STATUS_POWER);   
+        if ((nDevInt1Status & 0xc0) == 0xc0)
+          break;
+        nCounter--;
+        if (nCounter > 0) {
+          /* in case check pow status just after power on TAS2560 */
+          delay(10);
+        }
+      }
+
+      if ((nDevInt1Status & 0xc0) != 0xc0)
+      {	
+			  mnErrCode |= ERROR_CLASSD_PWR;			
+		  }
+      else
+      {
+        mnErrCode &= ~ERROR_CLASSD_PWR;
+      }	
+      
+		}
+
+    writeRegister8( TAS25X_INT_CFG_2, 0xff);
+
+		// if ((nDevInt1Status & 0xc0) != 0xc0) {
+		// 	Serial.printf("Critical ERROR = 0x%x\n",	nDevInt1Status);
+		// 	mnErrCode |= ERROR_CLASSD_PWR;				
+  	// }  
+	
+    return mnErrCode;
+}
+

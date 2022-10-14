@@ -72,17 +72,17 @@ void setup() {
 
   I2S.TxIRQCallBack(tx_irq);
 
-  while (!AMP_Left.begin(AMP_LEFT_ADDRESS))
+  if (!AMP_Left.begin(AMP_LEFT_ADDRESS))
   {
     Serial.printf("TAS2560 left init failed\r\n");
     delay(500);
   }
-  while (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
+  AMP_Left.set_pcm_channel(LeftMode);
+  if (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
   {
     Serial.printf("TAS2560 rigth init failed\r\n");
     delay(500);
-  }
-  AMP_Left.set_pcm_channel(LeftMode);
+  }  
   AMP_Right.set_pcm_channel(RightMode);
   Serial.println("=====================================");
 
@@ -102,7 +102,7 @@ void setup() {
   DSPG_USER.detectedCallback(EventProcess);
   DSPG_USER.readIoState();  //read the RAK18003 chip IO state
   Serial.printf("init ok\r\n");
-  DSPG_USER.echoCommands(3);
+  DSPG_USER.echoCommands(COMMAND_GROUP_CHOOSE);
   int_flag = 0;
 
   digitalWrite(LED_BLUE, HIGH);

@@ -66,12 +66,38 @@
 #define PCM_LEN24       0x02    //24 bits (default)   0b10
 #define PCM_LEN32       0x03    //32 bits             0b11
 
+#define	ERROR_NONE			   0x00000000
+#define	ERROR_PLL_ABSENT	   0x00000001
+#define	ERROR_DEVA_I2C_COMM	0x00000002
+#define	ERROR_DEVB_I2C_COMM	0x00000004
+#define	ERROR_PRAM_CRCCHK	   0x00000008
+#define	ERROR_YRAM_CRCCHK	   0x00000010
+#define	ERROR_CLK_DET2		   0x00000020
+#define	ERROR_CLK_DET1		   0x00000040
+#define	ERROR_CLK_LOST		   0x00000080
+#define	ERROR_BROWNOUT		   0x00000100
+#define	ERROR_DIE_OVERTEMP	0x00000200
+#define	ERROR_CLK_HALT		   0x00000400
+#define	ERROR_UNDER_VOLTAGE	0x00000800
+#define	ERROR_OVER_CURRENT	0x00001000
+#define	ERROR_CLASSD_PWR	   0x00002000
+#define	ERROR_FAILSAFE		   0x40000000
+
+#define	TAS2560_INTM_OVRI      0x80
+#define	TAS2560_INTM_AUV       0x40
+#define	TAS2560_INTM_CLK2      0x20
+#define	TAS2560_INTM_OVRT      0x10
+#define	TAS2560_INTM_BRNO      0x08
+#define	TAS2560_INTM_CLK1      0x04
+#define	TAS2560_INTM_MCHLT     0x02
+#define	TAS2560_INT_WCHLT      0x01
+
 /*ASI ASI_CHAN_MODE[1:0] Configures the ASI input stereo channel mode.   */
 typedef enum {
-   LeftMode  = 0,       //0 = Left Channel
+   LeftMode  = 0,        //0 = Left Channel
    RightMode = 1,        //1 = Right Channel
    LeftRightMode = 2,    //2 = (Left + Right) / 2
-   MonoPCMMode = 3      //3 = monoPCM
+   MonoPCMMode = 3       //3 = monoPCM
 }ASI_channel;
 
 typedef unsigned char cfg_u8;

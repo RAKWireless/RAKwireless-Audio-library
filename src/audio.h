@@ -65,6 +65,18 @@ void flash_read(char const *filepath, uint32_t *lic, uint32_t length);
 #define LICEENSE_LENGTH   46
 
 
+typedef enum { LEFTCHANNEL=0, RIGHTCHANNEL=1 } SampleIndex;
+
+typedef enum { LOWSHELF = 0, PEAKEQ = 1, HIFGSHELF =2 } FilterType;
+    typedef struct _filter{
+        float a0;
+        float a1;
+        float a2;
+        float b1;
+        float b2;
+    } filter_t;
+
+
 class Audio{
 
 public:
@@ -76,8 +88,31 @@ public:
   uint32_t* GetLicenseAddr();
   void GetLicense(uint32_t *lic);  
   uint32_t Cyberon_License[LICEENSE_LENGTH];
+
+  void setBalance(int8_t bal); // bal -16...16
+  void setVolume(uint8_t vol); // vol 22 steps, 0...21
+  uint8_t getVolume();
+  int32_t Gain(int16_t s[2]);
+  int32_t Gain(uint32_t data);
+  // uint32_t Gain(uint32_t data);
+  // bool playSample(int16_t sample[2]);
+  int calculateIIR_Gain(uint32_t sampleRate);
+  void  IIR_calculateCoefficients(uint32_t sampleRate,int8_t G0, int8_t G1, int8_t G2);  // Infinite Impulse Response (IIR) filters
+  int16_t* IIR_filterChain0(int16_t iir_in[2], bool clear= false);  // Infinite Impulse Response (IIR) filters
+  int16_t* IIR_filterChain1(int16_t iir_in[2], bool clear= false);  // Infinite Impulse Response (IIR) filters
+  int16_t* IIR_filterChain2(int16_t iir_in[2], bool clear= false);  // Infinite Impulse Response (IIR) filters
+ 
 private:
 
+  int8_t    _balance = 0;                  // -16 (mute left) ... +16 (mute right)
+  uint8_t   _volume = 64;                       // volume
+
+  float     _filterBuff[3][2][2][2];       // IIR filters memory for Audio DSP
+  filter_t        _filter[3];                    // digital filters
+
+  int8_t    _gain0 = 0;                    // cut or boost filters (EQ)
+  int8_t    _gain1 = 0;
+  int8_t    _gain2 = 0;
 };
 
 extern Audio Audio_Handle;

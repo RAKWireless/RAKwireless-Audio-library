@@ -1,8 +1,12 @@
 /**
    @file PlayBackFromSD.ino
    @author rakwireless.com
-   @brief This example shows how to play WAV audio files from SD card.
-   @note This example need use the RAK18060 module. And use the battery power for WisBase.
+   @brief This example shows how to play WAV audio files from SD card. The quality of the audio played is 
+   related to the quality of the audio source and the speed of the SD card.So this example does not guarantee that you can play high-quality music.
+   The volume can be set from 0 to 21, and the appropriate volume can be set according to your speaker situation.
+   @note This example need use the RAK18003 and RAK18060 module. And use the battery power for WisBase.
+   This example only supports playing audio in WAV format.The default file name to play is "test.wav",you can modify it to the file name you want to play.    
+   The library provides some pure music in the "pure music" folder under the "sound" folder for testing.
    @version 0.1
    @date 2022-08-04
    @copyright Copyright (c) 2022
@@ -11,6 +15,8 @@
 #include "audio.h"
 #include "SPI.h"
 #include "SD.h"
+
+Audio rak_audio;
 
 #define AMP_LEFT_ADDRESS    0x4c    //amplifier i2c address
 #define AMP_RIGTT_ADDRESS   0x4f    //amplifier i2c address
@@ -21,17 +27,11 @@ TPT29555   Expander2(0x25);
 TAS2560 AMP_Left;
 TAS2560 AMP_Right;
 
-uint8_t         m_vol = 64;                     // volume
-int8_t          m_balance = 0;                  // -16 (mute left) ... +16 (mute right)
-
 File            audiofile;
 static uint32_t f_startPos = 44;  //audio data start position
 static uint32_t f_readPos = 0;    //read audio data position
 static uint32_t f_endPos = 0;     //audio data end position
-typedef enum { LEFTCHANNEL = 0, RIGHTCHANNEL = 1 } SampleIndex;
-const uint8_t volumetable[22] = {   0,  1,  2,  3,  4 , 6 , 8, 10, 12, 14, 17,
-                                    20, 23, 27, 30 , 34, 38, 43 , 48, 52, 58, 64
-                                }; //22 elements
+
 uint8_t play_flag = 0;
 
 #define WAV_HEAD_LEN 320
@@ -70,7 +70,7 @@ void listDir( const char * dirname, uint8_t levels);
 bool connectFS(fs::FS &fs, const char* path);
 void play_wav(const char* file);
 void play_task(void);
-void setVolume(uint8_t vol);
+
 void setup()
 {
   pinMode(WB_IO2, OUTPUT);
@@ -89,8 +89,7 @@ void setup()
     {
       break;
     }
-  }  
-  setVolume(8);
+  }
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
@@ -98,42 +97,19 @@ void setup()
   Serial.println("=========RAK11200 audio Test========");
   RAK18003Init();
   AMP_init();
+  rak_audio.setVolume(6); //The volume level can be set to 0-21
   SD_init();
   Serial.println("=====================================");
 }
 
 void loop()
 {
-  play_wav("test.wav"); //play test.wav
+  play_wav("test.wav"); //play test.wav, you can change the file name use your want to play, but only support play WAV format file.
   while (1); //If you need to repeat playback, you can comment out this line.
-}
-void setVolume(uint8_t vol) { // vol 22 steps, 0...21
-  if (vol > 21) vol = 21;
-  m_vol = volumetable[vol];
-}
-int32_t Gain(int16_t s[2]) {
-  int32_t v[2];
-  float step = (float)m_vol / 64;
-  uint8_t l = 0, r = 0;
-
-  if (m_balance < 0) {
-    step = step * (float)(abs(m_balance) * 4);
-    l = (uint8_t)(step);
-  }
-  if (m_balance > 0) {
-    step = step * m_balance * 4;
-    r = (uint8_t)(step);
-  }
-
-  v[LEFTCHANNEL] = (s[LEFTCHANNEL]  * (m_vol - l)) >> 6;
-  v[RIGHTCHANNEL] = (s[RIGHTCHANNEL] * (m_vol - r)) >> 6;
-
-  return (v[LEFTCHANNEL] << 16) | (v[RIGHTCHANNEL] & 0xffff);
 }
 void play_task(void)
 {
   int16_t sample[2] = {0};
-  uint32_t data = 0;
   SD_CS_low();  //enable the SPI
   delay(10);
   audiofile.seek(f_startPos);
@@ -142,8 +118,9 @@ void play_task(void)
   while (f_readPos < f_endPos)
   {
     int bytes_read = audiofile.read((uint8_t*)&sample, sizeof(sample));
-    uint32_t s32 = Gain(sample); // vosample2lume;
-    I2S.write((void *) &s32, sizeof(uint32_t));
+//    uint32_t s32 = rak_audio.Gain(sample); // vosample2lume;
+//    I2S.write((void *) &s32, sizeof(uint32_t));
+    I2S.write((void *) &sample, sizeof(sample));
     f_readPos = f_readPos + bytes_read;
   }
   delay(200);
