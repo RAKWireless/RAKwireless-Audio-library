@@ -53,7 +53,7 @@ void at_process()
     Audio_Handle.GetLicense(g_lpdwLicense);
     for(int i=0;i<46;i++)
     {
-      Serial.print(g_lpdwLicense[i],HEX);
+      Serial.printf("%08X",g_lpdwLicense[i]);
       Serial.print(" ");
     } 
     Serial.write("\nOK\n");    
@@ -82,7 +82,7 @@ void at_process()
     }
     for(int i=0;i<46;i++)
     {
-      Serial.print(g_lpdwLicense[i],HEX);
+      Serial.printf("%08X",g_lpdwLicense[i]);
       Serial.print(" ");   
     }       
     Audio_Handle.StoreLicense(g_lpdwLicense);
