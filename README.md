@@ -1,4 +1,4 @@
-| <center><img src="./assets/rakstar.jpg" alt="RAKstar" width=25%></center>  | ![RAKWireless](./assets/RAK-Whirls.png) | [![Build Status](https://github.com/RAKWireless/RAK13800_W5100S/workflows/RAK%20Library%20Build%20CI/badge.svg)](https://github.com/RAKWireless/RAK13800_W5100S/actions) |
+| <center><img src="./assets/rakstar.jpg" alt="RAKstar" width=25%></center>  | ![RAKWireless](./assets/RAK-Whirls.png) | [![Build Status](https://github.com/RAKWireless/RAKwireless-Audio-library/workflows/RAK%20Library%20Build%20CI/badge.svg)](https://github.com/RAKWireless/RAKwireless-Audio-library/actions) |
 | -- | -- | -- |
 
 <img src="assets/rakstar.jpg" style="zoom:50%;" /><img src="assets/RAK-Whirls.png" alt="RAK-Whirls" style="zoom:150%;" />
