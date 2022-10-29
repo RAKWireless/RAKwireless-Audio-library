@@ -1,7 +1,7 @@
 #ifndef __TAS2560REG_H__
 #define __TAS2560REG_H__
 
-#include <arduino.h>
+#include <Arduino.h>
 #include <Wire.h>
 // #include "tas2560.h"
 

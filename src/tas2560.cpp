@@ -1,6 +1,6 @@
 #include "tas2560.h"
 #include "tas2560reg.h"
-#include <arduino.h>
+#include <Arduino.h>
 #include <Wire.h>
 #include "SoftwareIIC.h"
 

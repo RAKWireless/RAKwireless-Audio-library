@@ -10,7 +10,7 @@
 #ifndef __SOFT_WARE_IIC_H__
 #define __SOFT_WARE_IIC_H__
 
-#include <arduino.h>
+#include <Arduino.h>
 #include "stdint.h"
 
 #define DELYA       5   // Define clock delay.

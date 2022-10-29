@@ -10,7 +10,7 @@
    @copyright Copyright (c) 2022
 */
 
-#include <arduino.h>
+#include <Arduino.h>
 #include "audio.h"
 
 NAU85L40B   MIC(0x1D);
