@@ -36,6 +36,8 @@ volatile uint8_t tx_flag = 1;
 int data_pos = 0;
 void i2s_config();
 void tx_irq();
+void set_AMP_mute();
+void set_AMP_unmute();
 
 void setup()
 {
@@ -70,7 +72,7 @@ void setup()
     delay(500);
   }
 
-  AMP_Right.set_pcm_channel(RightMode);
+  AMP_Right.set_pcm_channel(RightMode); 
   rak_audio.setVolume(6); //The volume level can be set to 0-21
   audio_length = sizeof(sound_buff) / 4; //The DMA transmit data width is 32 bits contains 4 bytes data
   Serial.println("start play");
@@ -115,16 +117,27 @@ void loop()
   }// while
   if (repeat_play == true)
   {
+    set_AMP_unmute();
     data_pos = 0;
   }
   else
   {
     delay(100);
+    set_AMP_mute();
     I2S.stop();
     while (1);
   }
 }
-
+void set_AMP_mute()
+{
+  AMP_Left.set_mute();
+  AMP_Right.set_mute();
+}
+void set_AMP_unmute()
+{
+  AMP_Left.set_unmute();
+  AMP_Right.set_unmute();
+}
 void tx_irq()  ///< Pointer to the buffer with data to be sent.
 {
   tx_flag = 1;

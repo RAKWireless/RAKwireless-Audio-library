@@ -10,6 +10,8 @@
     All voice command words are printed on the serial port after booting.
     When the DSPG recognizes the voice wake word "Hey RAK Star", "Hey Helium" or "Hey RAK Cloud", DSPG will play a prompt sound.
     When the DSPG recognizes a voice command word, the state of the two LED indicators on the WisBase flips once.
+    When the DSPG is in the awake state, the blue light is on. If the DSPG is in the sleep state, the blue light is off, and a trigger word is required to wake up the DSPG.
+    If the DSPG has an error during initialization, the blue and green lights keep flashing.
    @note This example need use the RAK18080、RAK18003 and RAK18060 modules.
    @version 0.1
    @date 2022-09-06
@@ -18,8 +20,8 @@
 #include "audio.h"
 #include "sound.h"
 
-#define DSPG_USE_MODEL  MODEL_GROUP4  //select voice model can be MODEL_GROUP1、MODEL_GROUP2、MODEL_GROUP3、MODEL_GROUP4
-#define COMMAND_GROUP_CHOOSE  4   //the number must be the same as the number of group selected,eg: 1 MODEL_GROUP1; 2 MODEL_GROUP2; 3 MODEL_GROUP3; 4 MODEL_GROUP4
+#define DSPG_USE_MODEL  MODEL_GROUP1  //select voice model can be MODEL_GROUP1、MODEL_GROUP2、MODEL_GROUP3、MODEL_GROUP4
+#define COMMAND_GROUP_CHOOSE  1   //the number must be the same as the number of group selected,eg: 1 MODEL_GROUP1; 2 MODEL_GROUP2; 3 MODEL_GROUP3; 4 MODEL_GROUP4
 
 TAS2560 AMP_Left;
 TAS2560 AMP_Right;
@@ -28,6 +30,9 @@ TAS2560 AMP_Right;
 #define AMP_RIGTT_ADDRESS   0x4f    //amplifier i2c address
 
 QueueHandle_t integerQueue;
+
+#define   TRIGGER_TIME    8000  //8S    
+SoftwareTimer blinkTimer;
 
 #define I2S_DATA_BLOCK_WORDS    512
 uint32_t *p_word = NULL;
@@ -41,9 +46,12 @@ uint32_t trigger_count = 0;
 volatile uint8_t int_flag = 0;
 uint8_t led_state = 0;
 
+void set_AMP_mute();
+void set_AMP_unmute();
 void tx_irq();
 void EventProcess(void);
 void speaker_task(void *pvParameters);  // This is a task.
+void blink_timer_callback(TimerHandle_t xTimerID);
 
 void setup() {
   pinMode(WB_IO2, OUTPUT);
@@ -52,9 +60,9 @@ void setup() {
   digitalWrite(WB_IO2, HIGH);
   delay(500);
   pinMode(LED_GREEN, OUTPUT);
-  digitalWrite(LED_GREEN, LOW);
+  digitalWrite(LED_GREEN, HIGH);
   pinMode(LED_BLUE, OUTPUT);
-  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_BLUE, HIGH);
 
   time_t timeout = millis();
   Serial.begin(115200);
@@ -82,20 +90,31 @@ void setup() {
   {
     Serial.printf("TAS2560 rigth init failed\r\n");
     delay(500);
-  }  
+  }
   AMP_Right.set_pcm_channel(RightMode);
+  set_AMP_mute();
   Serial.println("=====================================");
 
   DSPG_USER.SetActiveCommandGroup(COMMAND_GROUP_CHOOSE);  //it is necessary choose one voice model group before init DSPG.
   while (DSPG_USER.begin(DSPG_USE_MODEL, sizeof(DSPG_USE_MODEL)))
   {
     Serial.println("Please check !!!");
-    delay(1000);
+    delay(500);
+    digitalWrite(LED_BLUE, HIGH);
+    digitalWrite(LED_GREEN, HIGH);
+    delay(500);
+    digitalWrite(LED_BLUE, LOW);
+    digitalWrite(LED_GREEN, LOW);
   }
   while (DSPG_USER.micCheck() == 0) //Check if the microphone board is connected on the RAK18003
   {
     Serial.println("There is no microphone board, please check !");
-    delay(1000);
+    delay(500);
+    digitalWrite(LED_BLUE, HIGH);
+    digitalWrite(LED_GREEN, HIGH);
+    delay(500);
+    digitalWrite(LED_BLUE, LOW);
+    digitalWrite(LED_GREEN, LOW);
   }
   delay(100);
   //config interrupt
@@ -105,8 +124,10 @@ void setup() {
   DSPG_USER.echoCommands(COMMAND_GROUP_CHOOSE);
   int_flag = 0;
 
-  digitalWrite(LED_BLUE, HIGH);
-  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
+
+  blinkTimer.begin(TRIGGER_TIME, blink_timer_callback);
 
   integerQueue = xQueueCreate(10, sizeof(int));
   if (!integerQueue)
@@ -131,7 +152,8 @@ void loop()
     Serial.printf("CMD ID: %d\r\n", cmd_id);
     Serial.println(cmd_string);
     led_state = !led_state;
-    digitalWrite(LED_BLUE, led_state);
+    blinkTimer.start();
+    //    digitalWrite(LED_BLUE, led_state);
     digitalWrite(LED_GREEN, led_state);
     int id_case = cmd_id;
     //    play_task();
@@ -147,6 +169,26 @@ void tx_irq()  ///< Pointer to the buffer with data to be sent.
 {
   tx_flag = 1;
   I2S.write(&writebuff, sizeof(writebuff));
+}
+void blink_timer_callback(TimerHandle_t xTimerID)
+{
+  // freeRTOS timer ID, ignored if not used
+  (void) xTimerID;
+  Serial.println("DSPG Switch to Trigger Stage");
+  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
+  led_state = 0;
+  blinkTimer.stop();
+}
+void set_AMP_mute()
+{
+  AMP_Left.set_mute();
+  AMP_Right.set_mute();
+}
+void set_AMP_unmute()
+{
+  AMP_Left.set_unmute();
+  AMP_Right.set_unmute();
 }
 void play_task()
 {
@@ -201,7 +243,12 @@ void speaker_task(void *pvParameters)  // This is a task.
     {
       if ((cmd_id >= 1001) && (cmd_id <= 1003))
       {
+        // Start the timer
+        Serial.println("DSPG Switch to Command Stage");
+        digitalWrite(LED_BLUE, HIGH);        
+        set_AMP_unmute();
         play_task();
+        set_AMP_mute();
       }
     }
   }

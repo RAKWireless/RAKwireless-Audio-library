@@ -30,6 +30,7 @@ public:
   uint8_t get_gain(void);
 
   void set_mute(void);
+  void set_unmute(void);
   void set_alarm_pin(void(*function)(void));
   uint8_t get_power_status(void);
   uint8_t get_die_temp(void);

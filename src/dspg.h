@@ -40,7 +40,7 @@
 // #define USE_FW_READY
 #undef CUSTOMER_CODE
 #define CUSTOMER_BOARD
-// #define ASRP_RECORDING
+#define ASRP_RECORDING
 #undef BUFFERING_MODE_MIPS_OPTIMIZED
 #undef FW_DEBUG_DISABLE
 #define HOST_BOOT
@@ -126,7 +126,6 @@ typedef struct st_command {
     uint32_t    val;
 	dbmdx_reg_value_size_t	   value_size;   
 } COMMAND;
-
 
 
 class DSPG

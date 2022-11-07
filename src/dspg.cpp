@@ -1301,7 +1301,8 @@ void DSPG::echoCommands(void)
 	int n = sizeof(cyberon_trigger_commands)/sizeof(cyberon_trigger_commands[0]);	
 	for(i=0;i<n;i++)
 	{
-	 Serial.println(cyberon_trigger_commands[i]);
+	//  Serial.println(cyberon_trigger_commands[i]);
+	Serial.printf("Trigger word id:%d\t%s\r\n",i+1001,cyberon_trigger_commands[i]);
 	}	
 
 	Serial.println("********Command Words*********");	
@@ -1312,35 +1313,35 @@ void DSPG::echoCommands(void)
 			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
 			for(i=0;i<n;i++)
 			{
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group1_commands[i]);
 			}
 			break;
 		case USE_MODEL_GROUP2:
 			n = sizeof(g_cyberon_group2_commands)/sizeof(g_cyberon_group2_commands[0]);	
 			for(i=0;i<n;i++)
 			{
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group2_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group2_commands[i]);
 			}
 			break;
 		case USE_MODEL_GROUP3:
 			n = sizeof(g_cyberon_group3_commands)/sizeof(g_cyberon_group3_commands[0]);	
 			for(i=0;i<n;i++)
 			{			
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group3_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group3_commands[i]);
 			}
 			break;
 		case USE_MODEL_GROUP4:
 			n = sizeof(g_cyberon_group4_commands)/sizeof(g_cyberon_group4_commands[0]);	
 			for(i=0;i<n;i++)
 			{			
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group4_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group4_commands[i]);
 			}
 			break;
 		default:
 			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
 			for(i=0;i<n;i++)
 			{			
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group1_commands[i]);
 			}
 		break;
 	}	
@@ -1355,7 +1356,8 @@ void DSPG::echoCommands(int nGroupChoose)
 	int n = sizeof(cyberon_trigger_commands)/sizeof(cyberon_trigger_commands[0]);	
 	for(i=0;i<n;i++)
 	{
-	 Serial.println(cyberon_trigger_commands[i]);
+	//  Serial.println(cyberon_trigger_commands[i]);
+	 Serial.printf("Trigger word id:%d\t%s\r\n",i+1001,cyberon_trigger_commands[i]);
 	}	
 
 	Serial.println("********Command Words*********");	
@@ -1374,35 +1376,35 @@ void DSPG::echoCommands(int nGroupChoose)
 			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);			
 			for(i=0;i<n;i++)
 			{
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group1_commands[i]);
 			}
 			break;
 		case USE_MODEL_GROUP2:
 			n = sizeof(g_cyberon_group2_commands)/sizeof(g_cyberon_group2_commands[0]);	
 			for(i=0;i<n;i++)
 			{
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group2_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group2_commands[i]);
 			}
 			break;
 		case USE_MODEL_GROUP3:
 			n = sizeof(g_cyberon_group3_commands)/sizeof(g_cyberon_group3_commands[0]);	
 			for(i=0;i<n;i++)
 			{			
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group3_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group3_commands[i]);
 			}
 			break;
 		case USE_MODEL_GROUP4:
 			n = sizeof(g_cyberon_group4_commands)/sizeof(g_cyberon_group4_commands[0]);	
 			for(i=0;i<n;i++)
 			{			
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group4_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group4_commands[i]);
 			}
 			break;
 		default:
 			n = sizeof(g_cyberon_group1_commands)/sizeof(g_cyberon_group1_commands[0]);	
 			for(i=0;i<n;i++)
 			{			
-				Serial.printf("Command[%d]:\t%s\r\n",i,g_cyberon_group1_commands[i]);
+				Serial.printf("Command id[%d]:\t%s\r\n",i+2001,g_cyberon_group1_commands[i]);
 			}
 		break;
 	}	

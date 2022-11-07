@@ -35,6 +35,9 @@ volatile uint8_t tx_flag = 1;
 int data_pos = 0;
 void i2s_config();
 void tx_irq();
+void set_AMP_mute();
+void set_AMP_unmute();
+
 void setup()
 {
   pinMode(WB_IO2, OUTPUT);
@@ -117,11 +120,13 @@ void loop()
 
   if (repeat_play == true)
   {
+    set_AMP_unmute();
     data_pos = 0;
   }
   else
   {
     delay(100);
+    set_AMP_mute();
     I2S.stop();
     while (1);
   }
@@ -137,4 +142,14 @@ void i2s_config()
   I2S.TxIRQCallBack(tx_irq);
   I2S.begin(Left, sampleRate, sampleBit);
   I2S.start();
+}
+void set_AMP_mute()
+{
+  AMP_Left.set_mute();
+  AMP_Right.set_mute();
+}
+void set_AMP_unmute()
+{
+  AMP_Left.set_unmute();
+  AMP_Right.set_unmute();
 }

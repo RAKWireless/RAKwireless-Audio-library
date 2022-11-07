@@ -35,6 +35,8 @@ uint32_t trigger_count = 0;
 volatile uint8_t int_flag = 0;
 uint8_t led_state = 0;
 
+void set_AMP_mute();
+void set_AMP_unmute();
 void EventProcess(void);
 void speaker_task(void *pvParameters);  // This is a task.
 
@@ -129,6 +131,17 @@ void loop()
     int_flag = 0; //clear the interrupt flag
   }
 }
+void set_AMP_mute()
+{
+  AMP_Left.set_mute();
+  AMP_Right.set_mute();
+}
+void set_AMP_unmute()
+{
+  AMP_Left.set_unmute();
+  AMP_Right.set_unmute();
+}
+
 void EventProcess(void)
 {
   int_flag = 1;
@@ -147,6 +160,7 @@ void speaker_task(void *pvParameters)  // This is a task.
     {
       if ((cmd_id >= 1001) && (cmd_id <= 1003))
       {
+        set_AMP_unmute();
         for (int i = 0; i < (sizeof(sound_buff) / 2); i++)
         {
           int16_t left_channel = sound_buff[i * 2 + 1];
@@ -157,6 +171,7 @@ void speaker_task(void *pvParameters)  // This is a task.
         }
         I2S.clearDMA();
       }
+      set_AMP_mute();
     }
   }
 }

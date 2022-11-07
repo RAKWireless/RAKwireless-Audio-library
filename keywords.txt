@@ -120,6 +120,7 @@ clear_alarm KEYWORD2
 read_alarm  KEYWORD2
 
 set_mute    KEYWORD2
+set_unmute    KEYWORD2
 set_alarm_pin    KEYWORD2
 get_power_status    KEYWORD2
 get_die_temp    KEYWORD2
@@ -139,7 +140,6 @@ readGPIO    KEYWORD2
 digitalRead    KEYWORD2
 readAllGPIO    KEYWORD2
 readAllPin    KEYWORD2
-
 
 #######################################
 # Constants (LITERAL1)

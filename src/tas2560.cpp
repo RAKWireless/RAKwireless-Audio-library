@@ -477,6 +477,13 @@ void TAS2560::set_mute(void)
  writeRegister8(TAS25X_PWR_CTRL_1, 0x03 );
 
 }
+void TAS2560::set_unmute(void)
+{
+ writeRegister8(TAS25X_PAGE, 0x00 );       //---------------
+ writeRegister8(TAS25X_BOOK, 0x00 );
+ writeRegister8(TAS25X_PWR_CTRL_1, 0x80 );
+
+}
 
 uint8_t TAS2560::set_speaker_load(uint8_t impedance)
 {

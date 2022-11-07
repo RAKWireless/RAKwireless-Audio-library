@@ -86,6 +86,7 @@ void Audio::setBalance(int8_t bal){ // bal -16...16
     _balance = bal;
 }
 void Audio::setVolume(uint8_t vol) { // vol 22 steps, 0...21
+    if(vol < 0) vol = 0;
     if(vol > 21) vol = 21;
     _volume = volumetable[vol];
 }
