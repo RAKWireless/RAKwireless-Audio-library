@@ -27,7 +27,10 @@ TAS2560 AMP_Right;
 #define AMP_LEFT_ADDRESS    0x4c    //amplifier i2c address
 #define AMP_RIGTT_ADDRESS   0x4f    //amplifier i2c address
 
+#define   TRIGGER_TIME    800000  //8S  
+
 QueueHandle_t integerQueue;
+hw_timer_t * blinkTimer = NULL;            //声明一个定时器
 
 char cmd_string[60] = "";
 int cmd_id = 0;
@@ -37,20 +40,22 @@ uint8_t led_state = 0;
 
 void set_AMP_mute();
 void set_AMP_unmute();
+void IRAM_ATTR onTimer();
+void configer_blinkTimer();
+
 void EventProcess(void);
 void speaker_task(void *pvParameters);  // This is a task.
 
 void setup() {
   pinMode(WB_IO2, OUTPUT);
   digitalWrite(WB_IO2, LOW);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_BLUE, HIGH);
   delay(1000);
   digitalWrite(WB_IO2, HIGH);
   delay(500);
-  pinMode(LED_GREEN, OUTPUT);
-  digitalWrite(LED_GREEN, LOW);
-  pinMode(LED_BLUE, OUTPUT);
-  digitalWrite(LED_BLUE, LOW);
-
   time_t timeout = millis();
   Serial.begin(115200);
   while (!Serial)
@@ -65,31 +70,42 @@ void setup() {
     }
   }
 
-  while (!AMP_Left.begin(AMP_LEFT_ADDRESS))
+  if (!AMP_Left.begin(AMP_LEFT_ADDRESS))
   {
     Serial.printf("TAS2560 left init failed\r\n");
     delay(500);
   }
-  while (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
+  AMP_Left.set_pcm_channel(LeftMode);
+  if (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
   {
     Serial.printf("TAS2560 rigth init failed\r\n");
     delay(500);
   }
-  AMP_Left.set_pcm_channel(LeftMode);
   AMP_Right.set_pcm_channel(RightMode);
   Serial.println("=====================================");
-
+  set_AMP_mute();
   DSPG_USER.SetActiveCommandGroup(COMMAND_GROUP_CHOOSE);  //it is necessary choose one voice model group before init DSPG.
   while (DSPG_USER.begin(DSPG_USE_MODEL, sizeof(DSPG_USE_MODEL)))
   {
     Serial.println("Please check !!!");
-    delay(1000);
+    delay(500);
+    digitalWrite(LED_BLUE, HIGH);
+    digitalWrite(LED_GREEN, HIGH);
+    delay(500);
+    digitalWrite(LED_BLUE, LOW);
+    digitalWrite(LED_GREEN, LOW);
   }
   while (DSPG_USER.micCheck() == 0) //Check if the microphone board is connected on the RAK18003
   {
     Serial.println("There is no microphone board, please check !");
-    delay(1000);
+    delay(500);
+    digitalWrite(LED_BLUE, HIGH);
+    digitalWrite(LED_GREEN, HIGH);
+    delay(500);
+    digitalWrite(LED_BLUE, LOW);
+    digitalWrite(LED_GREEN, LOW);
   }
+  configer_blinkTimer();
   delay(100);
   //config interrupt
   DSPG_USER.detectedCallback(EventProcess);
@@ -98,9 +114,8 @@ void setup() {
   DSPG_USER.echoCommands(COMMAND_GROUP_CHOOSE);
   int_flag = 0;
 
-  digitalWrite(LED_BLUE, HIGH);
-  digitalWrite(LED_GREEN, HIGH);
-
+  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
   integerQueue = xQueueCreate(10, sizeof(int));
   if (!integerQueue)
   {
@@ -110,6 +125,7 @@ void setup() {
   {
     Serial.println("creat speaker task  failed");
   }
+
 }
 
 void loop()
@@ -124,7 +140,8 @@ void loop()
     Serial.printf("CMD ID: %d\r\n", cmd_id);
     Serial.println(cmd_string);
     led_state = !led_state;
-    digitalWrite(LED_BLUE, led_state);
+    timerAlarmEnable(blinkTimer);
+//    digitalWrite(LED_BLUE, led_state);
     digitalWrite(LED_GREEN, led_state);
     int id_case = cmd_id;
     xQueueSend(integerQueue, &id_case, portMAX_DELAY);
@@ -140,6 +157,21 @@ void set_AMP_unmute()
 {
   AMP_Left.set_unmute();
   AMP_Right.set_unmute();
+}
+
+void IRAM_ATTR onTimer() {
+
+  Serial.println("DSPG Switch to Trigger Stage");
+  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN, LOW);
+  led_state = 0;
+}
+void configer_blinkTimer() {
+  blinkTimer = timerBegin(2, 8000, true);                //set timer0
+  timerAttachInterrupt(blinkTimer, &onTimer, true);
+  timerAlarmWrite(blinkTimer, 8000, true);     //microseconds   true:enable reload   false:disable reload
+  //  timerAlarmEnable(blinkTimer);                //
+  //timerDetachInterrupt(blinkTimer);             //
 }
 
 void EventProcess(void)
@@ -159,7 +191,10 @@ void speaker_task(void *pvParameters)  // This is a task.
     if (xQueueReceive(integerQueue, &cmd_id, portMAX_DELAY) == pdPASS)
     {
       if ((cmd_id >= 1001) && (cmd_id <= 1003))
-      {
+      {     
+        
+        Serial.println("DSPG Switch to Command Stage");
+        digitalWrite(LED_BLUE, HIGH);        
         set_AMP_unmute();
         for (int i = 0; i < (sizeof(sound_buff) / 2); i++)
         {

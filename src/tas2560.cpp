@@ -445,7 +445,7 @@ void TAS2560::set_alarm(void)
   writeRegister8(TAS25X_INT_CFG_2,0);
   // uint8_t read1  = readRegister8( TAS25X_INT_DET_1);
   // uint8_t read2 = readRegister8( TAS25X_INT_DET_2);
-  writeRegister8(TAS25X_IRQ_PIN_CFG,0x41);  //0x41
+  writeRegister8(TAS25X_IRQ_PIN_CFG,0x01);  //0x41
   writeRegister8(TAS25X_INT_CFG_1,0x80); 
   writeRegister8(TAS25X_INT_CFG_2,reg.data);
   // uint8_t read = readRegister8(TAS25X_INT_CFG_2);
