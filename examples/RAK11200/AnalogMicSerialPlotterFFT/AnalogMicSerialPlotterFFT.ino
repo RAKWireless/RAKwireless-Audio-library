@@ -4,10 +4,12 @@
    @brief This example reads PCM audio datas from the analog microphones by I2S, and prints
    out the FFT transfer samples to the Serial console. The Serial Plotter built into the
    Arduino IDE can be used to plot the audio data (Tools -> Serial Plotter)
-   @note This example need use the RAK18040 analog microphone module.
-   @version 0.1
-   @date 2022-06-6
-   @copyright Copyright (c) 2022
+   @note 
+   1) To use the ploter function Arduino IDE version 1.x is needed (version 2.x plotter does not work with this code)
+   2) This example uses the RAK18040 analog microphone module.
+   @version 0.2
+   @date 2024-03-25
+   @copyright Copyright (c) 2024
 */
 
 #include <Arduino.h>
@@ -64,6 +66,7 @@ void loop() {
 
   // Read data from microphone
   int sampleRead = I2S.read(sampleBuffer, sizeof(sampleBuffer));
+  float Freq_with_Max_Amp;						   
 
   sampleRead = sampleRead >> 1; //each sample data with two byte
   // wait for samples to be read
@@ -71,15 +74,14 @@ void loop() {
     // Fill the buffers with the samples
     memset(approxBuffer, 0, sizeof(approxBuffer));
 
-    for (int i = 0; i < BUFFER_SIZE; i++)
-    {
+    for (int i = 0; i < BUFFER_SIZE; i++){
       approxBuffer[i] = sampleBuffer[i];
-      //      Serial.println(sampleBuffer[i]);
+      //      Serial.println(approxBuffer[i]);
     }
 
     if (first_flag > 20)  //Discard the first 20 samples data
     {
-      Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency);
+      Freq_with_Max_Amp = Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency); // default return frequency with max aplitude
       //      for (int j=0; j<BUFFER_SIZE; j++){
       //      Serial.println(approxBuffer[j]);
       //      }
@@ -88,13 +90,15 @@ void loop() {
 
       for (int j = 0; j < 500; j++)
       {
-        Serial.println(print_string[j]);
+        Serial.print("Data:"); Serial.print(print_string[j]);Serial.print(", ");
+        Serial.print("Peak_Freq"); Serial.print(Freq_with_Max_Amp); Serial.print(":"); Serial.print(Freq_with_Max_Amp);Serial.print(", ");
+        Serial.println();
       }
-      delay(1000);
+      delay(3000); // wait 3 seconds so plot can be read
     }
     else
     {
-      first_flag += 1;
+      first_flag++;
     }
     sampleRead = 0;
   }

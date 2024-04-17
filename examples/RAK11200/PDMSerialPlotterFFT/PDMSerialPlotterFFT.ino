@@ -4,9 +4,11 @@
    @brief This example reads audio data from the PDM microphones, and prints
    out the FFT transfer samples to the Serial console. The Serial Plotter built into the
    Arduino IDE can be used to plot the audio data (Tools -> Serial Plotter)
-   @version 0.1
-   @date 2022-06-6
-   @copyright Copyright (c) 2022
+   @note  
+   1) To use the ploter function Arduino IDE version 1.x is needed (version 2.x plotter does not work with this code)
+   @version 0.2
+   @date 2024-03-25
+   @copyright Copyright (c) 2024
 */
 
 #include <Arduino.h>
@@ -20,7 +22,8 @@ short sampleBuffer[BUFFER_SIZE];
 
 // Audio sample buffers used for analysis and display
 int approxBuffer[BUFFER_SIZE];   // ApproxFFT sample buffer
-const double samplingFrequency = 16000;     // Frequency range plotted is 2.5kHz (sampling frequency/4)
+const double samplingFrequency = 16000;     //must match frequency above!
+// Frequency range plotted is 2.5kHz (sampling frequency/4)
 
 int print_string[500] = {0};
 
@@ -51,13 +54,11 @@ void setup() {
 
   // initialize PDM with:
   // - one channel (mono mode)
-  // - a 16 kHz sample rate
   // default PCM output frequency
   if (!PDM.begin(channels, frequency)) {
     Serial.println("Failed to start PDM!");
     while (1) yield();
   } 
-  Serial.println("=====================FFT example =====================");
 
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, HIGH);
@@ -68,6 +69,7 @@ void loop() {
 
   // Read data from microphone
   int sampleRead = PDM.read(sampleBuffer, sizeof(sampleBuffer));
+  float Freq_with_Max_Amp;
 
   sampleRead = sampleRead >> 1; //each sample data with two byte
   // wait for samples to be read
@@ -82,7 +84,7 @@ void loop() {
 
     if (first_flag > 10)  //Discard the first 10 samples of data
     {
-      Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency);
+      Freq_with_Max_Amp = Approx_FFT(approxBuffer, BUFFER_SIZE, samplingFrequency); // default return frequency with max aplitude
       //      for (int j=0; j<BUFFER_SIZE; j++){
       //      Serial.println(approxBuffer[j]);
       //      }
@@ -91,9 +93,11 @@ void loop() {
 
       for (int j = 0; j < 500; j++)
       {
-        Serial.println(print_string[j]);
+        Serial.print("Data:"); Serial.print(print_string[j]);Serial.print(", ");
+        Serial.print("Peak_Freq"); Serial.print(Freq_with_Max_Amp); Serial.print(":"); Serial.print(Freq_with_Max_Amp);Serial.print(", ");
+        Serial.println();
       }
-      delay(1000);
+      delay(3000); // wait 3 seconds so plot can be read
     }
     else
     {
