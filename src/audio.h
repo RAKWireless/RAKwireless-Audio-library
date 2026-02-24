@@ -4,8 +4,16 @@
 #include "Arduino.h"
 #include <stdint.h>
 #include <string.h>
-#include <PDM.h>
-#include <I2S.h>
+#ifdef _VARIANT_RAK3112_
+  #include "esp32-s3/PDM.h" // includes esp32-s3/PDM.h support
+#else
+  #include <PDM.h>
+#endif
+#ifdef _VARIANT_RAK3112_
+  #include <ESP_I2S.h> // includes ESP_I2S support
+#else
+  #include <I2S.h>
+#endif
 #include <SPI.h>
 #include "tas2560.h"
 #include "dspg.h"
@@ -53,7 +61,11 @@ extern "C"
 #define DR_REG_BASE                       0x3ff5A000
 #define BLK0_RDATA1_REG          (DR_REG_BASE + 0x004)
 #define BLK0_RDATA2_REG          (DR_REG_BASE + 0x008)
-#define CYBERON_FILEPATH    "Cyberon_License"   
+#define CYBERON_FILEPATH    "Cyberon_License"  
+#elif defined (_VARIANT_RAK3112_)
+#define CYBERON_FILEPATH    "Cyberon_License"
+#define Stereo    2
+#define BUFFER_SIZE   1920
 #endif
 
 // Flash

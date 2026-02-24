@@ -36,6 +36,13 @@ void DSPG::i2sInit(void)
   RP2040_I2S.setBitsPerSample(16); 
  // start I2S at the sample rate with 16-bits per sample
   RP2040_I2S.begin(16000);
+#elif defined(_VARIANT_RAK3112_)  // for RAK3112
+  I2S.setPins(WB_IO6,WB_IO5,SDA1,SCL1);
+  
+  if (!I2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO) )
+  {
+    Serial.println("Failed to initialize I2S!");
+  }
 #else							  // for RAK4630
   I2S.begin(Stereo,16000,16);
   I2S.start();
@@ -47,6 +54,8 @@ void DSPG::i2sEnd(void)
   I2S.end();
 #elif defined(_VARIANT_RAK11300_) // for RAK11300
   RP2040_I2S.end();
+#elif defined(_VARIANT_RAK3112_)	//for RAK3112
+  I2S.end();
 #else							  // for RAK4630  
   I2S.end();
  #endif
@@ -1586,7 +1595,7 @@ uint16_t DSPG::dbmdx_read_register(int16_t reg)
 	char val_str[8];
 #endif
 
-#if defined(_VARIANT_RAK11200_)
+#if defined(_VARIANT_RAK11200_) || defined(_VARIANT_RAK3112_)    //add rak3112
 	SPI_USER.end();
 	// begin SPI
   	SPI_USER.begin();
@@ -1644,7 +1653,7 @@ void DSPG::dbmdx_write_register(int16_t reg, int16_t val)
 	char val_str[8];
 #endif
 
-#if defined(_VARIANT_RAK11200_)
+#if defined(_VARIANT_RAK11200_) || defined(_VARIANT_RAK3112_)    //add rak3112
 	SPI_USER.end();
 	// begin SPI
   	SPI_USER.begin();
