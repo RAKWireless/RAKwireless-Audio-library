@@ -1,3 +1,5 @@
+#if defined(_VARIANT_RAK3112_)  || defined(ARDUINO_RAKWIRELESS_RAK3112)   //rak3112
+
 #include "PDM.h"
 // #include "esp_now.h"
 // #include "driver/i2s.h"
@@ -50,4 +52,4 @@ int PDMClass::read(void* buffer, size_t size)
   return read_bytes;
 }
 
-
+#endif

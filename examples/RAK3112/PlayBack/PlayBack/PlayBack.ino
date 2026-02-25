@@ -11,7 +11,7 @@
  */
 #include "audio.h"
 #include "sound.h"
-
+ 
 TAS2560 AMP_Left;
 TAS2560 AMP_Right;
 
@@ -58,7 +58,9 @@ void setup() {
   AMP_Left.set_pcm_channel(LeftMode);
   AMP_Right.set_pcm_channel(RightMode);
 
- // I2S.setPins(39,38,17,18);
+  AMP_Left.set_gain(5);   // gain can set from 0-15
+  AMP_Right.set_gain(5);  
+
   I2S.setPins(WB_IO6,WB_IO5,SDA1,SCL1);
   
   if (!I2S.begin(I2S_MODE_STD, frequency, I2S_DATA_BIT_WIDTH_16BIT, (i2s_slot_mode_t)channels)) 

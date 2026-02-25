@@ -22,7 +22,7 @@ TAS2560 AMP_Right;
 #define AMP_LEFT_ADDRESS    0x4c    //amplifier i2c address
 #define AMP_RIGTT_ADDRESS   0x4f    //amplifier i2c address
 
-int channels = 1;   //mono
+int channels = 2;   //mono
 static const int frequency = 22050;   //samplerate 22.05KHz
 
 void setup() {
@@ -82,21 +82,26 @@ void loop()
   Serial.println("start play");
   for (int i = 0; i < sound_size; i++)
   {
-    p_word = &sample[0];
-    ((uint8_t *)p_word)[1] = sound_buff[i * 2 + 1];
-    ((uint8_t *)p_word)[0] = sound_buff[i * 2];
+    // p_word = &sample[0];
+    // ((uint8_t *)p_word)[1] = sound_buff[i * 2 + 1];
+    // ((uint8_t *)p_word)[0] = sound_buff[i * 2];
 
-    if (channels == 1)
-    {
-      i++;
-      p_word = &sample[1];
-      ((uint8_t *)p_word)[1] = sound_buff[i * 2 + 1];
-      ((uint8_t *)p_word)[0] = sound_buff[i * 2];
-    }
-    else
-    {
-      sample[1] = sample[0];
-    }
+    // if (channels == 1)
+    // {
+    //   i++;
+    //   p_word = &sample[1];
+    //   ((uint8_t *)p_word)[1] = sound_buff[i * 2 + 1];
+    //   ((uint8_t *)p_word)[0] = sound_buff[i * 2];
+    // }
+    // else
+    // {
+    //   sample[1] = sample[0];
+    // }
+
+    ((uint8_t *)&sample[0])[1] = sound_buff[i * 2 + 1];   //Adjust the playback speed to normal.
+    ((uint8_t *)&sample[0])[0] = sound_buff[i * 2];
+
+    sample[1] = sample[0];  
 
     uint32_t s32 = rak_audio.Gain(sample); //
     I2S.write((const uint8_t *) &s32, sizeof(uint32_t));

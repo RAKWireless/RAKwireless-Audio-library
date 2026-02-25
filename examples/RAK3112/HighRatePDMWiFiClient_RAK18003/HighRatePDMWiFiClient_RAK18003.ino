@@ -95,7 +95,8 @@ void send_to_host()
   const int httpPort = 8080;
   if (!client.connect(host, httpPort)) {
     Serial.println("connection failed");
-    while (1);
+    // while (1);
+    return;
   }
 
   // We now create a URI for the request
