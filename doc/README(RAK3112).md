@@ -1,5 +1,7 @@
 # RAK3112-Audio-Solutions
 
+> **The current version does not support speech recognition; this module will be updated in a future version**.
+
 ## 1.**Code Modification Notes：**
 
 ### 1.1.BSP json:
@@ -40,8 +42,6 @@ eg:C:\Users\user\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.6\lib
 ```
 
 
-
-**The current version does not support speech recognition; this module will be updated in a future version**.
 
 
 
@@ -99,7 +99,3 @@ void send_to_host(){
     return;   
  }}
 ```
-
-#### 2.5 DSPG_Playback
-
-Regarding the DSPG_Playback demo project, I will leave it as is for now, or I may remove this section. The previous plan was to change the speech recognition solution; I will modify and redesign this section, as well as other speech recognition solutions, in future work.
