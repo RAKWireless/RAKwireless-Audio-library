@@ -17,6 +17,8 @@ https://jihulab.com/esp-mirror/espressif/arduino-esp32/-/raw/gh-pages/package_es
 
 Please update the official ESP32 library. If compilation fails, please wait for the official ESP32 library to update or manually modify **pins_arduino.h**.
 
+**Note (ESP32 BSP versions):** as of Arduino-ESP32 BSP **v3.3.7**, the latest RAK3112 variant macro is not included yet. You can **manually add** `#define _VARIANT_RAK3112_` in `pins_arduino.h` for now, or **wait for v3.3.8** (or later) where the variant update is expected to land.
+
 **File pash:**
 
 ```
