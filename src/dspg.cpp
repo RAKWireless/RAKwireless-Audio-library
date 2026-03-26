@@ -332,11 +332,11 @@ void DSPG::detectedCallback(void(*function)(void))
 {
  //config interrupt
  pinMode(FW_INT_PIN, INPUT_PULLUP); 
-#if defined(_VARIANT_RAK3112_)
- /* RAK3112: use edge trigger to avoid interrupt storms. */
- attachInterrupt(FW_INT_PIN, function, FALLING);
+ #if defined(_VARIANT_RAK3112_)
+ 	/* RAK3112: use edge trigger to avoid interrupt storms. */
+ 	attachInterrupt(FW_INT_PIN, function, FALLING);
 #else
- attachInterrupt(FW_INT_PIN, function, CHANGE);
+	attachInterrupt(FW_INT_PIN, function, CHANGE);
 #endif
 }
 void DSPG::delectDetectedCallback(void)
@@ -1446,7 +1446,7 @@ void DSPG::eventCallBack(char *command,int *command_id)
 	delay(20);
 
 #if defined(_VARIANT_RAK3112_)
-	/* RAK3112 (ESP32-S3): VT flags may be combined (VT1_DET|VT2_DET). Accept VT1/VT2 and  
+	/* RAK3112 (ESP32-S3): VT flags may be combined (VT1_DET|VT2_DET). Accept VT1/VT2 and
 	   read WORD_ID from the matching block; strict interrupt_events==2 misses some command events. */
 	{
 		const uint16_t vt_ev_mask = (uint16_t)(VT1_DET | VT2_DET);
@@ -1487,21 +1487,29 @@ void DSPG::eventCallBack(char *command,int *command_id)
 		}
 	}
 #else
-	VT_offset = VT1_REGS_OFFSET;
-#endif
-	word_id = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_WORD_ID));
+	// if (event == VT1_DET) {VT_offset = VT1_REGS_OFFSET;}	
+	// else if (event == VT2_DET) {VT_offset = VT2_REGS_OFFSET;}	
+	VT_offset = VT1_REGS_OFFSET;	
+#endif	
+	//get word ID
+	word_id = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_WORD_ID));   
 	#if(DSP_LOG_ENABLED >= 1)
 	{		
 		Serial.print("Word ID:");
 		Serial.println(word_id);	
 	}
 	#endif
+	// delay(10);
+	// uint16_t len = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_PHRASE_LENGTH));	//this value is no used
+    // Serial.print("Word ID Length:");
+ 	// Serial.println(len);	
 	memset(rsp_str,0,100);
-
+	
 #if defined(_VARIANT_RAK3112_)
 	*command_id = word_id;
 #else
-	if (interrupt_events == 2)
+	// if(interrupt_events!=0)	
+	if(interrupt_events == 2)	
 	{
 		*command_id = word_id;
 #endif
