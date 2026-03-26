@@ -1446,7 +1446,7 @@ void DSPG::eventCallBack(char *command,int *command_id)
 	delay(20);
 
 #if defined(_VARIANT_RAK3112_)
-	/* RAK3112 (ESP32-S3): VT flags may be combined (VT1_DET|VT2_DET). Accept VT1/VT2 and
+	/* RAK3112 (ESP32-S3): VT flags may be combined (VT1_DET|VT2_DET). Accept VT1/VT2 and  
 	   read WORD_ID from the matching block; strict interrupt_events==2 misses some command events. */
 	{
 		const uint16_t vt_ev_mask = (uint16_t)(VT1_DET | VT2_DET);
