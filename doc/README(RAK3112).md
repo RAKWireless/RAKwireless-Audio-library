@@ -1,6 +1,8 @@
 # RAK3112-Audio-Solutions
 
-> **The current version does not support speech recognition; this module will be updated in a future version**.
+> **Speech recognition is supported via RAK18080 (DSPG) in the current solution.**
+>
+> Future roadmap: will gradually add **AI speech recognition** and related capabilities (e.g. on-device AI/edge inference).
 
 ## 1.**Code Modification Notes：**
 
@@ -14,6 +16,8 @@ https://jihulab.com/esp-mirror/espressif/arduino-esp32/-/raw/gh-pages/package_es
 ### 1.2.pins_arduino.h
 
 Please update the official ESP32 library. If compilation fails, please wait for the official ESP32 library to update or manually modify **pins_arduino.h**.
+
+**Note (ESP32 BSP versions):** as of Arduino-ESP32 BSP **v3.3.7**, the latest RAK3112 variant macro is not included yet. You can **manually add** `#define _VARIANT_RAK3112_` in `pins_arduino.h` for now, or **wait for v3.3.8** (or later) where the variant update is expected to land.
 
 **File pash:**
 
@@ -98,4 +102,58 @@ void send_to_host(){
     // while (1);
     return;   
  }}
+```
+
+## 3.Voice recognition test logs (RAK3112 + RAK18003 + RAK18080 + RAK18060)
+
+### 3.1 Test phenomenon
+
+- Wake word **"Hey RAK Star"** can be detected (CMD ID `1001`)
+- Command words can be detected after wake (e.g. **"Play Music"**, **"Stop"**)
+- The playback task prints the received event (`[DSPG] event in task: ...`)
+
+### 3.2 Example serial log（DSPG_PlayBack.ino）
+
+```
+***************** 1
+CMD ID: 1001
+Hey RAK Star
+[DSPG] event in task: id=1001, cmd=Hey RAK Star
+DSPG Switch to Command Stage
+
+***************** 3
+CMD ID: 2001
+Play Music
+[DSPG] event in task: id=2001, cmd=Play Music
+
+***************** 4
+CMD ID: 2014
+Stop
+[DSPG] event in task: id=2014, cmd=Stop
+```
+
+### 3.3 Example serial log（VoiceRecognition_DSPG.ino）
+
+This demo prints recognized wake/command words continuously (no prompt playback).
+
+```
+***************** 1
+pinstate:FDDA -> FDDA
+CMD ID: 1001
+Hey RAK Star
+
+***************** 2
+pinstate:FDDA -> FDDA
+CMD ID: 2001
+Play Music
+
+***************** 4
+pinstate:FDDA -> FDDA
+CMD ID: 2014
+Stop
+
+***************** 6
+pinstate:FDDA -> FDDA
+CMD ID: 2003
+Play Music
 ```

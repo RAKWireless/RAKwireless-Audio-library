@@ -332,7 +332,12 @@ void DSPG::detectedCallback(void(*function)(void))
 {
  //config interrupt
  pinMode(FW_INT_PIN, INPUT_PULLUP); 
- attachInterrupt(FW_INT_PIN, function,CHANGE);
+ #if defined(_VARIANT_RAK3112_)
+ 	/* RAK3112: use edge trigger to avoid interrupt storms. */
+ 	attachInterrupt(FW_INT_PIN, function, FALLING);
+#else
+	attachInterrupt(FW_INT_PIN, function, CHANGE);
+#endif
 }
 void DSPG::delectDetectedCallback(void)
 {
@@ -1439,9 +1444,53 @@ void DSPG::eventCallBack(char *command,int *command_id)
 	}
 	#endif	
 	delay(20);
+
+#if defined(_VARIANT_RAK3112_)
+	/* RAK3112 (ESP32-S3): VT flags may be combined (VT1_DET|VT2_DET). Accept VT1/VT2 and
+	   read WORD_ID from the matching block; strict interrupt_events==2 misses some command events. */
+	{
+		const uint16_t vt_ev_mask = (uint16_t)(VT1_DET | VT2_DET);
+		if ((interrupt_events & vt_ev_mask) == 0)
+		{
+			command[0] = '\0';
+			*command_id = 0;
+			event = false;
+			return;
+		}
+		// Read both WORD_IDs to avoid "VT2 flag but VT2 not initialized" cases.
+		const int vt1_word_id = (int)dbmdx_read_register((uint16_t)(VT1_REGS_OFFSET | VT_REG_WORD_ID));
+		const int vt2_word_id = (int)dbmdx_read_register((uint16_t)(VT2_REGS_OFFSET | VT_REG_WORD_ID));
+
+		#if(DSP_LOG_ENABLED >= 1)
+		{
+			Serial.printf("VT1 Word ID:%d\r\n", vt1_word_id);
+			Serial.printf("VT2 Word ID:%d\r\n", vt2_word_id);
+		}
+		#endif
+
+		// Prefer the flagged block, but fall back to the other if it looks empty.
+		if ((interrupt_events & VT2_DET) && (vt2_word_id != 0))
+		{
+			VT_offset = VT2_REGS_OFFSET;
+		}
+		else if ((interrupt_events & VT1_DET) && (vt1_word_id != 0))
+		{
+			VT_offset = VT1_REGS_OFFSET;
+		}
+		else if (vt1_word_id != 0)
+		{
+			VT_offset = VT1_REGS_OFFSET;
+		}
+		else
+		{
+			VT_offset = VT2_REGS_OFFSET;
+		}
+	}
+#else
 	// if (event == VT1_DET) {VT_offset = VT1_REGS_OFFSET;}	
 	// else if (event == VT2_DET) {VT_offset = VT2_REGS_OFFSET;}	
-	VT_offset = VT1_REGS_OFFSET;		
+	VT_offset = VT1_REGS_OFFSET;	
+#endif	
 	//get word ID
 	word_id = dbmdx_read_register((uint16_t)(VT_offset | VT_REG_WORD_ID));   
 	#if(DSP_LOG_ENABLED >= 1)
@@ -1455,11 +1504,15 @@ void DSPG::eventCallBack(char *command,int *command_id)
     // Serial.print("Word ID Length:");
  	// Serial.println(len);	
 	memset(rsp_str,0,100);
+	
+#if defined(_VARIANT_RAK3112_)
+	*command_id = word_id;
+#else
 	// if(interrupt_events!=0)	
 	if(interrupt_events == 2)	
 	{
 		*command_id = word_id;
-
+#endif
 		if (word_id < 2000)
 		{
 			cyberon_G1_count++;
@@ -1507,7 +1560,9 @@ void DSPG::eventCallBack(char *command,int *command_id)
 				break;
 			}						
 		}
+#if !defined(_VARIANT_RAK3112_)
 	}
+#endif
 
 	#if(DSP_LOG_ENABLED >= 1)
 	{
