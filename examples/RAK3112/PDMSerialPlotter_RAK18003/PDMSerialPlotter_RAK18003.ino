@@ -20,7 +20,7 @@
 // the dual-port driver actually runs PDM and STD I2S concurrently —
 // before Phase 2 this would have caused the second `begin()` to tear
 // down the first peripheral.
-#define FULL_DUPLEX_TEST     0
+#define FULL_DUPLEX_TEST     1
 #define AMP_LEFT_ADDRESS     0x4c
 #define AMP_RIGHT_ADDRESS    0x4f
 #define TONE_HZ              1000
@@ -28,15 +28,23 @@
 TPT29555   Expander1(0x23);
 TPT29555   Expander2(0x25);
 
+int channels = 1; //1 mono  2 stereo
+// default PCM output frequency
+static const int frequency = 48000;
+
 #if FULL_DUPLEX_TEST
 TAS2560 AMP_Left;
 TAS2560 AMP_Right;
-static int16_t toneBlock[1600];   // 100 ms at 16 kHz
+// Size the tone block to an integer multiple of the tone period so
+// the block boundary never lands mid-cycle (otherwise you get an
+// audible periodic click at rates where SAMPLE_RATE / TONE_HZ does
+// not divide the fixed block length evenly — e.g. 1600 samples @
+// 48 kHz is 33.33 cycles of 1 kHz, not an integer).
+static const int TONE_CYCLES_PER_BLOCK = 40;
+static const int TONE_BLOCK_SAMPLES =
+    (frequency / TONE_HZ) * TONE_CYCLES_PER_BLOCK;
+static int16_t toneBlock[TONE_BLOCK_SAMPLES];
 #endif
-
-int channels = 1; //1 mono  2 stereo
-// default PCM output frequency
-static const int frequency = 16000;
 
 // buffer to read samples into, each sample is 16-bits
 short sampleBuffer[BUFFER_SIZE];
@@ -102,7 +110,7 @@ void setup() {
     Serial.println("I2S.begin (STD) failed");
   }
   const float w = 2.0f * 3.14159265358979f * (float)TONE_HZ / (float)frequency;
-  for (size_t i = 0; i < sizeof(toneBlock) / sizeof(toneBlock[0]); i++) {
+  for (int i = 0; i < TONE_BLOCK_SAMPLES; i++) {
     toneBlock[i] = (int16_t)(0.3f * 32767.0f * sinf(w * i));
   }
 #endif

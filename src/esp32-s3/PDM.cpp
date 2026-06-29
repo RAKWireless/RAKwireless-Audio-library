@@ -7,8 +7,8 @@ I2SClass I2S;
 
 
 PDMClass::PDMClass()
+  : _buffer_size(BUFFER_SIZE)
 {
-
 }
 
 PDMClass::~PDMClass()
@@ -40,6 +40,16 @@ int PDMClass::begin(int channels, long sampleRate)
 void PDMClass::end()
 {
   _pdm_i2s.end();
+}
+
+
+int PDMClass::available()
+{
+  // ESP_I2S::available() reports BYTES present in the IDF DMA ring
+  // for the RX channel. Forward unchanged — Arduino's nRF52 PDM
+  // library uses the same byte semantics, so cross-core code can call
+  // PDM.available() / PDM.read() without conditional sizing.
+  return _pdm_i2s.available();
 }
 
 

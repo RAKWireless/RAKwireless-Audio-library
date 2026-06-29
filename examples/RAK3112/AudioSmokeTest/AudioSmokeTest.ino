@@ -26,7 +26,7 @@
 #include <math.h>
 
 // ---- knobs --------------------------------------------------------------
-#define SAMPLE_RATE     96000   // 8000 / 16000 / 22050 (96000 stretch)
+#define SAMPLE_RATE     16000   // 8000 / 16000 / 22050 (96000 stretch)
 #define AMP_VARIANT     60      // 60 = RAK18060 stereo, 61 = RAK18061 mono
 #define TONE_HZ         1000
 #define TONE_MS         2000
