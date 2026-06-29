@@ -1,5 +1,24 @@
 #include "tas2560.h"
 
+// ------------------------------------------------------------------
+// TAS2560 static register table.
+//
+// Inherited verbatim from RAKwireless-Audio-library upstream commit
+// 8099d9b454e94bb2f582ae5818798875589367d0. Provenance of the DSP
+// coefficient pages (book 0x00 pages 0x32 / 0x33 / 0x34) is not
+// documented upstream — no PPC3 export, no datasheet table reference,
+// no measured tuning. They are kept here as the fallback block until
+// a sourced per-rate table is supplied. See driver_updates_plan.md
+// Phase 1 step 3 for the source/license requirement and step 4 for
+// the per-rate API surface.
+//
+// Notable rate-sensitive writes in this table:
+//   line ~45: 0x36 = 0x32   PCM_RATE = 16/24 kHz window
+//   line ~46: 0x22 = 0x3F   CLK_ERR_2 = all clock-error flags enabled
+// TAS2560::begin(addr, sample_rate) overwrites both of these after
+// this table runs, via apply_rate_dependent_init().
+// ------------------------------------------------------------------
+
 cfg_reg registers[205] = {
 { 0x00, 0x00 },       //---------------
 { 0x7f, 0x00 },
@@ -215,3 +234,28 @@ cfg_reg registers[205] = {
 { 0x07, 0x80 } //{ 0x07, 0x80 }, //{ 0x07, 0x40 },     //0x40开启boost     0x80关闭boost
 
 };
+
+// ------------------------------------------------------------------
+// Per-rate DSP coefficient selector.
+//
+// Today every rate falls through to the inherited `registers[]` block
+// above (i.e. no rate-specific retune). The selector exists so callers
+// can transition to sourced tables without an API churn, and so a
+// compile-time `#warning` documents that 8 kHz / 96 kHz are not yet
+// tuned. Callers that already run `registers[]` via begin() do NOT
+// need to call this — it is for the future per-rate path.
+// ------------------------------------------------------------------
+
+#if !defined(TAS2560_SUPPRESS_UNTUNED_WARN)
+#  warning "TAS2560: per-rate DSP coefficient tables are not yet sourced; \
+all rates fall back to the inherited upstream block. \
+See driver_updates_plan.md Phase 1 step 4. \
+Define TAS2560_SUPPRESS_UNTUNED_WARN to silence."
+#endif
+
+const cfg_reg *tas2560_dsp_coeffs_for_rate(uint32_t fs, int *out_count)
+{
+  (void)fs;
+  if (out_count) *out_count = sizeof(registers) / sizeof(registers[0]);
+  return registers;
+}

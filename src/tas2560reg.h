@@ -111,6 +111,24 @@ typedef union {
 
 extern cfg_reg registers[205];
 
+// Per-rate DSP/biquad coefficient block.
+//
+// Source attribution (see driver_updates_plan.md Phase 1 step 3):
+// The default `registers[]` table is inherited verbatim from the
+// RAKwireless-Audio-library upstream commit
+// 8099d9b454e94bb2f582ae5818798875589367d0. The coefficient pages
+// (book 0x00 pages 0x32 / 0x33 / 0x34) carry no upstream attribution
+// to a TI PPC3 export, datasheet table, or measured tuning. Until a
+// sourced per-rate table is supplied, all rates fall back to this
+// inherited block.
+//
+// Returns a pointer to the coefficient block for `fs` and writes the
+// element count into `out_count`. Returns nullptr if no block is
+// available — caller should skip the coefficient stage in that case.
+// A `#warning` fires at compile time inside `tas2560reg.cpp` for any
+// rate that does not yet have a sourced/tuned table.
+const cfg_reg *tas2560_dsp_coeffs_for_rate(uint32_t fs, int *out_count);
+
 typedef union 
 {   
    struct //bit

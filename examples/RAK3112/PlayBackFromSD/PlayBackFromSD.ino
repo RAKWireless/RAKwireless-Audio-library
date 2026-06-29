@@ -481,8 +481,21 @@ void play_wav(const char* file)
     {
       get_flie_info();
 
+      // Program PCM_RATE / CLK_ERR_2 on both amps for the rate the WAV
+      // header declares, so non-default rates (e.g. 8 kHz voice) play.
+      if (!AMP_Left.set_sample_rate(g_wav_head.sampleRate))
+      {
+        Serial.printf("TAS2560 left: unsupported sample rate %u\r\n",
+                      (unsigned)g_wav_head.sampleRate);
+      }
+      if (!AMP_Right.set_sample_rate(g_wav_head.sampleRate))
+      {
+        Serial.printf("TAS2560 right: unsupported sample rate %u\r\n",
+                      (unsigned)g_wav_head.sampleRate);
+      }
+
       I2S.setPins(WB_IO6,WB_IO5,SDA1,SCL1);
-      if (!I2S.begin(I2S_MODE_STD, g_wav_head.sampleRate, (i2s_data_bit_width_t)g_wav_head.singleBitsPerSample, (i2s_slot_mode_t)g_wav_head.channels)) 
+      if (!I2S.begin(I2S_MODE_STD, g_wav_head.sampleRate, (i2s_data_bit_width_t)g_wav_head.singleBitsPerSample, (i2s_slot_mode_t)g_wav_head.channels))
       {
         Serial.println("Failed to initialize I2S!");
       }

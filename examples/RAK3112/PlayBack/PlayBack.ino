@@ -44,16 +44,18 @@ void setup() {
     }
   }
   
-  Serial.println("=====================================");  
-  if(!AMP_Left.begin(AMP_LEFT_ADDRESS))
+  Serial.println("=====================================");
+  // Pass the I2S sample rate through to the TAS2560 so PCM_RATE /
+  // CLK_ERR_2 are programmed for the rate this sketch actually runs.
+  if(!AMP_Left.begin(AMP_LEFT_ADDRESS, (uint32_t)frequency))
   {
     Serial.printf("TAS2560 left init failed\r\n");
   }
- 
-  if(!AMP_Right.begin(AMP_RIGTT_ADDRESS))
+
+  if(!AMP_Right.begin(AMP_RIGTT_ADDRESS, (uint32_t)frequency))
   {
     Serial.printf("TAS2560 rigth init failed\r\n");
-  } 
+  }
 
   AMP_Left.set_pcm_channel(LeftMode);
   AMP_Right.set_pcm_channel(RightMode);

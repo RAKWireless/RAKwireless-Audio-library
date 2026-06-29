@@ -74,6 +74,136 @@ bool TAS2560::begin(uint8_t addr) //Sets up the Hardware
   #endif  
   return false;
 }
+bool TAS2560::begin(uint8_t addr, uint32_t sample_rate)
+{
+  if (!begin(addr)) return false;
+  apply_rate_dependent_init(sample_rate);
+  return true;
+}
+bool TAS2560::begin(uint8_t addr, TwoWire &theWire, uint32_t sample_rate)
+{
+  if (!begin(addr, theWire)) return false;
+  apply_rate_dependent_init(sample_rate);
+  return true;
+}
+
+// PCM_RATE (book 0x00 page 0x00 reg 0x36) nibble values per the
+// TAS2560 datasheet PCM_RATE table. Confirm against the datasheet
+// before shipping — these match the upstream static-table value of
+// 0x32 for 16/24 kHz, which is the only point we can cross-check
+// without the part in front of us.
+//
+// 8 kHz   -> 0x12
+// 12 kHz  -> 0x22
+// 16/24   -> 0x32
+// 32/48   -> 0x42
+// 44.1/88.2 -> 0x52
+// 96 kHz  -> 0x62
+bool TAS2560::set_sample_rate(uint32_t fs)
+{
+  uint8_t pcm_rate;
+  switch (fs) {
+    case 8000:                       pcm_rate = 0x12; break;
+    case 12000:                      pcm_rate = 0x22; break;
+    case 16000: case 24000:          pcm_rate = 0x32; break;
+    case 32000: case 48000:          pcm_rate = 0x42; break;
+    case 44100: case 88200:          pcm_rate = 0x52; break;
+    case 96000:                      pcm_rate = 0x62; break;
+    default: return false;
+  }
+  // Page/book 0 holds PCM_RATE and CLK_ERR_2.
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, 0x00);
+  writeRegister8(TAS25X_PCM_RATE, pcm_rate);
+  _sample_rate = fs;
+  return true;
+}
+
+void TAS2560::apply_rate_dependent_init(uint32_t fs)
+{
+  if (!set_sample_rate(fs)) {
+    // Unknown rate — leave the upstream defaults in place.
+    return;
+  }
+
+  // The static init table assumes the 16/24 kHz BCLK domain:
+  //   PLL_CLKIN  (0x0F) = 0x01  -> source = BCLK
+  //   PLL_J      (0x10) = 0x20  -> integer multiplier 32
+  //   PLL_D MSB  (0x11) = 0x00
+  //   PLL_D LSB  (0x12) = 0x00
+  //   CLK_ERR_2  (0x22) = 0x3F  -> every clock-error flag enabled
+  // At 16 kHz mono 16-bit, BCLK = 256 kHz, so PLL_OUT = 256k * 32 =
+  // 8.192 MHz — the DSP's expected MCLK. At 8 kHz mono 16-bit BCLK
+  // halves to 128 kHz, the PLL would drop to ~4.096 MHz which is
+  // below the chip's working range, and the part declines to enable
+  // class-D (STATUS_POWER reads 0x00 with no clock-error flag).
+  //
+  // To keep PLL_OUT centred near 8.192 MHz across rates, we scale
+  // PLL_J inversely with BCLK. Stay rate-independent for the upstream-
+  // tuned rates (>=16 kHz, J=0x20) and double J for the 8/12 kHz BCLK
+  // domain. PLL_D stays zero (integer multiplier).
+
+  uint8_t pll_j;
+  uint8_t clk_err_1;
+  uint8_t clk_err_2;
+  switch (fs) {
+    case 8000:
+    case 12000:
+      pll_j      = 0x40;  // 64 -> PLL_OUT ≈ 8.192 MHz at BCLK 128k
+      // CLK_ERR_1 default 0x03 = clock-error DSP reload + shutdown
+      // enabled. At 8 kHz the WCLK is below the chip's internal halt
+      // threshold, so every detected "halt" reloads/silences the DSP.
+      // Clear it for the low-rate path; the WCHLT/MCHLT detections
+      // are spurious here, not real clock dropouts.
+      clk_err_1  = 0x00;
+      // Mask the interrupt-mirror too, so the alarm pin doesn't fire.
+      clk_err_2  = 0x00;
+      break;
+    default:
+      pll_j      = 0x20;  // upstream default for >=16 kHz BCLK
+      clk_err_1  = 0x03;  // upstream default
+      clk_err_2  = 0x3F;
+      break;
+  }
+
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, 0x00);
+  writeRegister8(TAS25X_PLL_JVAL, pll_j);
+  writeRegister8(TAS25X_PLL_DVAL_1, 0x00);
+  writeRegister8(TAS25X_PLL_DVAL_2, 0x00);
+  writeRegister8(TAS25X_CLK_ERR_1, clk_err_1);
+  writeRegister8(TAS25X_CLK_ERR_2, clk_err_2);
+}
+
+#ifdef TAS2560_DEBUG_REGISTERS
+uint8_t TAS2560::debug_read_book_page_reg(uint8_t book, uint8_t page, uint8_t reg)
+{
+  // Save current book/page so we can restore it. The driver convention
+  // is that book/page live at 0x7F and 0x00 of whatever the chip is
+  // currently selected to, so a naive readback is safe enough here.
+  uint8_t prev_page = readRegister8(TAS25X_PAGE);
+  uint8_t prev_book = readRegister8(TAS25X_BOOK);
+
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, book);
+  writeRegister8(TAS25X_PAGE, page);
+  uint8_t value = readRegister8(reg);
+
+  // Restore.
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, prev_book);
+  writeRegister8(TAS25X_PAGE, prev_page);
+  return value;
+}
+
+void TAS2560::debug_set_clk_err_mask(uint8_t mask)
+{
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, 0x00);
+  writeRegister8(TAS25X_CLK_ERR_2, mask);
+}
+#endif // TAS2560_DEBUG_REGISTERS
+
 bool TAS2560::begin(void) //Sets up the Hardware
 {
   #if defined(_VARIANT_RAK11200_)

@@ -16,6 +16,19 @@ public:
   bool begin(uint8_t addr,TwoWire &theWire); //Sets up the Hardware
   bool begin(uint8_t addr); //Sets up the Hardware
   bool begin(void);
+  // Rate-aware overloads. The static init table boots the part for the
+  // 16/24 kHz PCM window (PCM_RATE = 0x32) with every clock-error flag
+  // enabled (CLK_ERR_2 = 0x3F); at 8 kHz the part flags a clock error
+  // and self-mutes. These overloads run the static init and then
+  // overwrite PCM_RATE (and a rate-appropriate CLK_ERR_2) so the
+  // configured I2S BCLK actually drives audio.
+  bool begin(uint8_t addr, uint32_t sample_rate);
+  bool begin(uint8_t addr, TwoWire &theWire, uint32_t sample_rate);
+  // Programs PCM_RATE (book 0x00 page 0x00 reg 0x36) for the supplied
+  // sample rate. Returns false for unsupported rates without touching
+  // the register. Supported: 8000, 12000, 16000, 24000, 32000, 48000,
+  // 44100, 88200, 96000.
+  bool set_sample_rate(uint32_t fs);
   void writeRegister8(uint8_t reg, uint8_t value);
   void write(uint8_t reg, uint8_t *value,int length);
   uint8_t readRegister8(uint8_t reg);
@@ -46,9 +59,22 @@ public:
   void clear_alarm(void);
   unsigned int read_alarm(void);
 
+  // Debug-only register read helpers — see TAS2560_DEBUG_REGISTERS.
+  // These are guarded behind a non-release define so production builds
+  // do not expose register-poking APIs. They restore book/page state.
+#ifdef TAS2560_DEBUG_REGISTERS
+  uint8_t debug_read_book_page_reg(uint8_t book, uint8_t page, uint8_t reg);
+  // Debug-only: loosen the CLK_ERR_2 mask to help diagnose 8 kHz clock
+  // errors. Release builds intentionally do not ship a public API for
+  // this — keep it behind the debug guard.
+  void    debug_set_clk_err_mask(uint8_t mask);
+#endif
+
 private:
 
   uint8_t i2c_addr; //the  deviceaddress
+  uint32_t _sample_rate = 16000; // last rate configured via set_sample_rate
+  void apply_rate_dependent_init(uint32_t fs);
   TwoWire *_wire;   //the  i2c port interface
   int _alarm_pin;   //read alarm pin
   uint8_t volume;
