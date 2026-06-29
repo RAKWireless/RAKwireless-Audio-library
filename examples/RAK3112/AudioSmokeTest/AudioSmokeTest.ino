@@ -26,12 +26,12 @@
 #include <math.h>
 
 // ---- knobs --------------------------------------------------------------
-#define SAMPLE_RATE     16000   // 8000 / 16000 / 22050 (96000 stretch)
+#define SAMPLE_RATE     96000   // 8000 / 16000 / 22050 (96000 stretch)
 #define AMP_VARIANT     60      // 60 = RAK18060 stereo, 61 = RAK18061 mono
 #define TONE_HZ         1000
 #define TONE_MS         2000
 #define REC_MS          2000
-#define AMP_GAIN        5       // TAS2560 set_gain 0..15
+#define AMP_GAIN        1       // TAS2560 set_gain 0..15
 // ------------------------------------------------------------------------
 
 #define AMP_LEFT_ADDRESS    0x4c
@@ -51,8 +51,16 @@ static const int channels = 1;
 static const int TONE_SAMPLES_PER_BLOCK = SAMPLE_RATE / 10;  // 100 ms
 static int16_t toneBlock[TONE_SAMPLES_PER_BLOCK];
 
-// Mic capture buffer (16-bit mono).
-static const int REC_SAMPLES = (SAMPLE_RATE * REC_MS) / 1000;
+// Mic capture buffer (16-bit mono). Capped to keep static DRAM use
+// under ~64 KB so the high sample rates (88 200 / 96 000) link on
+// ESP32-S3 — a full REC_MS allocation at 96 kHz would overflow
+// dram0_0_seg. The effective recording window at high rates is
+// shorter than REC_MS; fine for a smoke-test min/max/RMS readout.
+static const int REC_BUF_SAMPLES_CAP = 32000;          // 64 KB
+static const int REC_SAMPLES_REQUESTED = (SAMPLE_RATE * REC_MS) / 1000;
+static const int REC_SAMPLES =
+    (REC_SAMPLES_REQUESTED < REC_BUF_SAMPLES_CAP) ? REC_SAMPLES_REQUESTED
+                                                  : REC_BUF_SAMPLES_CAP;
 static int16_t recBuf[REC_SAMPLES];
 
 static void buildToneBlock()

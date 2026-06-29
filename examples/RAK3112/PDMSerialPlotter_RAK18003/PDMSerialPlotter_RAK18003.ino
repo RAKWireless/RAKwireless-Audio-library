@@ -12,9 +12,27 @@
 */
 
 #include "audio.h"
+#include <math.h>
+
+// Phase 2 full-duplex smoke test: set FULL_DUPLEX_TEST to 1 to bring
+// up the RAK18060/18061 amplifier alongside the PDM mic and stream a
+// 1 kHz tone out the speaker while logging mic samples. Verifies that
+// the dual-port driver actually runs PDM and STD I2S concurrently —
+// before Phase 2 this would have caused the second `begin()` to tear
+// down the first peripheral.
+#define FULL_DUPLEX_TEST     0
+#define AMP_LEFT_ADDRESS     0x4c
+#define AMP_RIGHT_ADDRESS    0x4f
+#define TONE_HZ              1000
 
 TPT29555   Expander1(0x23);
 TPT29555   Expander2(0x25);
+
+#if FULL_DUPLEX_TEST
+TAS2560 AMP_Left;
+TAS2560 AMP_Right;
+static int16_t toneBlock[1600];   // 100 ms at 16 kHz
+#endif
 
 int channels = 1; //1 mono  2 stereo
 // default PCM output frequency
@@ -53,22 +71,61 @@ void setup() {
   // - one channel (mono mode)
   // - a 16 kHz sample rate
   // default PCM output frequency
-  if (!PDM.begin(channels, frequency)) 
+  if (!PDM.begin(channels, frequency))
   {
     Serial.println("Failed to start PDM!");
-    while (1) 
+    while (1)
       yield();
   }
 
+#if FULL_DUPLEX_TEST
+  // Bring the speaker path up *after* PDM. Pre-Phase 2 this call
+  // would have re-bound the single shared I2S peripheral to STD mode
+  // and made PDM.read() return constant 0xFFFF. With the dual-port
+  // fix it now binds to I2S_NUM_1 and leaves PDM running on
+  // I2S_NUM_0.
+  if (!AMP_Left.begin(AMP_LEFT_ADDRESS, (uint32_t)frequency)) {
+    Serial.println("AMP_Left.begin failed");
+  } else {
+    AMP_Left.set_pcm_channel(LeftMode);
+    AMP_Left.set_gain(5);
+  }
+  if (!AMP_Right.begin(AMP_RIGHT_ADDRESS, (uint32_t)frequency)) {
+    Serial.println("AMP_Right.begin failed");
+  } else {
+    AMP_Right.set_pcm_channel(RightMode);
+    AMP_Right.set_gain(5);
+  }
+  I2S.setPins(WB_IO6, WB_IO5, SDA1, SCL1);
+  if (!I2S.begin(I2S_MODE_STD, frequency, I2S_DATA_BIT_WIDTH_16BIT,
+                 (i2s_slot_mode_t)channels)) {
+    Serial.println("I2S.begin (STD) failed");
+  }
+  const float w = 2.0f * 3.14159265358979f * (float)TONE_HZ / (float)frequency;
+  for (size_t i = 0; i < sizeof(toneBlock) / sizeof(toneBlock[0]); i++) {
+    toneBlock[i] = (int16_t)(0.3f * 32767.0f * sinf(w * i));
+  }
+#endif
+
   Serial.println("=====================================");
+#if FULL_DUPLEX_TEST
+  Serial.println("PDM + speaker full-duplex test");
+#else
   Serial.println("PDM test");
+#endif
   Serial.println("=====================================");
   pinMode(LED_BLUE, OUTPUT);
   digitalWrite(LED_BLUE, HIGH);
 }
 
-void loop() 
+void loop()
 {
+#if FULL_DUPLEX_TEST
+  // Push a tone block on the speaker every loop iteration. Non-
+  // blocking — if the I2S TX DMA isn't ready it returns 0.
+  I2S.write((const uint8_t *)toneBlock, sizeof(toneBlock));
+#endif
+
   // Read data from microphone
   int samplesRead = PDM.read(sampleBuffer, BUFFER_SIZE * sizeof(short));
 
