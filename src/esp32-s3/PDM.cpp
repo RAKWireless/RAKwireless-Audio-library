@@ -3,17 +3,27 @@
 #include "PDM.h"
 #include <string.h>
 #include "driver/i2s_common.h"
+#include "driver/i2s_std.h"
+#include "driver/i2s_pdm.h"
 #include "esp_timer.h"
 
-PDMClass    PDM;
+PDMClass      PDM;
 I2SEventClass I2S;
 
-// ---------------------------------------------------------------
+// ------------------------------------------------------------------
 // PDMClass
-// ---------------------------------------------------------------
+// ------------------------------------------------------------------
 
 PDMClass::PDMClass()
-  : _buffer_size(BUFFER_SIZE),
+  : _rx_chan(nullptr),
+    _channel_open(false),
+    _requested_bytes(BUFFER_SIZE),
+    _effective_bytes(0),
+    _dma_desc_num(4),
+    _dma_frame_num(240),
+    _requested_gain(0),
+    _channels(1),
+    _sample_rate(16000),
     _staging_pos(0),
     _staging_avail(0),
     _user_cb(nullptr),
@@ -29,15 +39,117 @@ PDMClass::PDMClass()
 
 PDMClass::~PDMClass() {}
 
+// Compute (dma_desc_num, dma_frame_num) so that
+//   dma_desc_num * dma_frame_num * bytes_per_frame ≈ target_bytes.
+// bytes_per_frame = channels * 2 (16-bit PDM only).
+// dma_desc_num fixed at 4. Clamp dma_frame_num to IDF's 8..4092.
+void PDMClass::_compute_dma_params_from_bytes(int target_bytes, int channels)
+{
+  const int bytes_per_frame = channels * 2;
+  int desc = 4;
+  int frames = target_bytes / (desc * bytes_per_frame);
+  if (frames < 8)    frames = 8;
+  if (frames > 4092) frames = 4092;
+  _dma_desc_num  = desc;
+  _dma_frame_num = frames;
+  _effective_bytes = desc * frames * bytes_per_frame;
+}
+
+// Arduino nRF52 setGain range is roughly 0..80. IDF amplify_num is 1..15.
+// Linear map with a small offset so 0 stays at 1 (no gain).
+int PDMClass::_amplify_from_gain(int gain) const
+{
+  if (gain <= 0)  return 1;
+  if (gain >= 80) return 15;
+  return 1 + (gain * 14) / 80;
+}
+
+int PDMClass::bufferSize() const
+{
+  return _channel_open ? _effective_bytes : _requested_bytes;
+}
+
+bool PDMClass::setBufferSize(int size)
+{
+  if (_channel_open) return false;
+  if (size <= 0)     return false;
+  _requested_bytes = size;
+  return true;
+}
+
+void PDMClass::setGain(int gain)
+{
+  _requested_gain = gain;
+  if (_channel_open) {
+    // Reprogram slot config live.
+    i2s_pdm_rx_slot_config_t slot_cfg =
+        I2S_PDM_RX_SLOT_PCM_FMT_DEFAULT_CONFIG(
+            I2S_DATA_BIT_WIDTH_16BIT,
+            _channels == 2 ? I2S_SLOT_MODE_STEREO : I2S_SLOT_MODE_MONO);
+    slot_cfg.amplify_num = _amplify_from_gain(gain);
+    i2s_channel_disable(_rx_chan);
+    i2s_channel_reconfig_pdm_rx_slot(_rx_chan, &slot_cfg);
+    i2s_channel_enable(_rx_chan);
+  }
+}
+
 int PDMClass::begin(int channels, long sampleRate)
 {
-  _pdm_i2s.setPinsPdmRx(42, 41);
-  if (!_pdm_i2s.begin(I2S_MODE_PDM_RX, sampleRate, I2S_DATA_BIT_WIDTH_16BIT,
-                      (i2s_slot_mode_t)channels))
-  {
-    Serial.println("Failed to initialize I2S!");
+  if (_channel_open) return 0;
+
+  _channels = channels;
+  _sample_rate = sampleRate;
+  _compute_dma_params_from_bytes(_requested_bytes, channels);
+
+  i2s_chan_config_t chan_cfg = {
+      .id = I2S_NUM_AUTO,
+      .role = I2S_ROLE_MASTER,
+      .dma_desc_num  = (uint32_t)_dma_desc_num,
+      .dma_frame_num = (uint32_t)_dma_frame_num,
+      .auto_clear = true,
+      .auto_clear_before_cb = false,
+      .allow_pd = false,
+      .intr_priority = 0,
+  };
+
+  if (i2s_new_channel(&chan_cfg, nullptr, &_rx_chan) != ESP_OK) {
+    Serial.println("PDM: i2s_new_channel failed");
     return 0;
   }
+
+  i2s_pdm_rx_slot_config_t slot_cfg =
+      I2S_PDM_RX_SLOT_PCM_FMT_DEFAULT_CONFIG(
+          I2S_DATA_BIT_WIDTH_16BIT,
+          channels == 2 ? I2S_SLOT_MODE_STEREO : I2S_SLOT_MODE_MONO);
+  slot_cfg.amplify_num = _amplify_from_gain(_requested_gain);
+
+  i2s_pdm_rx_clk_config_t clk_cfg = I2S_PDM_RX_CLK_DEFAULT_CONFIG((uint32_t)sampleRate);
+
+  i2s_pdm_rx_gpio_config_t gpio_cfg = {};
+  gpio_cfg.clk = (gpio_num_t)42;
+  gpio_cfg.din = (gpio_num_t)41;
+  gpio_cfg.invert_flags.clk_inv = 0;
+
+  i2s_pdm_rx_config_t pdm_cfg = {
+      .clk_cfg  = clk_cfg,
+      .slot_cfg = slot_cfg,
+      .gpio_cfg = gpio_cfg,
+  };
+  if (i2s_channel_init_pdm_rx_mode(_rx_chan, &pdm_cfg) != ESP_OK) {
+    Serial.println("PDM: init_pdm_rx_mode failed");
+    i2s_del_channel(_rx_chan);
+    _rx_chan = nullptr;
+    return 0;
+  }
+
+  if (i2s_channel_enable(_rx_chan) != ESP_OK) {
+    Serial.println("PDM: channel_enable failed");
+    i2s_del_channel(_rx_chan);
+    _rx_chan = nullptr;
+    return 0;
+  }
+
+  _channel_open = true;
   _staging_pos = 0;
   _staging_avail = 0;
   _dma_events = _dropped_events = _user_callbacks = 0;
@@ -46,13 +158,15 @@ int PDMClass::begin(int channels, long sampleRate)
 
 void PDMClass::end()
 {
-  // Detach user callback and stop dispatch task BEFORE tearing down
-  // the IDF channel — that guarantees no ISR fires while we free
-  // the semaphore.
   _user_cb = nullptr;
   _stop_dispatch_task();
 
-  _pdm_i2s.end();
+  if (_rx_chan) {
+    i2s_channel_disable(_rx_chan);
+    i2s_del_channel(_rx_chan);
+    _rx_chan = nullptr;
+  }
+  _channel_open = false;
   _staging_pos = 0;
   _staging_avail = 0;
 }
@@ -70,14 +184,11 @@ void PDMClass::_pump()
   }
 
   size_t room = sizeof(_staging) - _staging_avail;
-  if (room == 0) return;
-
-  i2s_chan_handle_t h = _pdm_i2s.rxChan();
-  if (h == NULL) return;
+  if (room == 0 || _rx_chan == nullptr) return;
 
   size_t got = 0;
-  esp_err_t err = i2s_channel_read(h, _staging + _staging_avail, room,
-                                   &got, 0);
+  esp_err_t err = i2s_channel_read(_rx_chan, _staging + _staging_avail,
+                                   room, &got, 0);
   if (err != ESP_OK && err != ESP_ERR_TIMEOUT) got = 0;
   _staging_avail += got;
 }
@@ -99,15 +210,9 @@ int PDMClass::read(void* buffer, size_t size)
   return (int)to_copy;
 }
 
-// ---- Phase 4 callback plumbing ----
+// ---- Phase 4 callback plumbing (IRAM ISR path) ----
 
-// File-scope ISR trampoline. IDF passes `user_ctx` (our PDMClass*)
-// so we can route back into the instance without dragging IDF types
-// into the header.
-// IDF requires ISR callbacks live in IRAM — a flash-cache miss during
-// an interrupt context would crash. Every function reachable from
-// the IDF ISR path below is annotated IRAM_ATTR.
-bool IRAM_ATTR pdm_isr_on_recv_trampoline(void *ctx);   // fwd decl of friend
+bool IRAM_ATTR pdm_isr_on_recv_trampoline(void *ctx);
 static bool IRAM_ATTR pdm_isr_on_recv(i2s_chan_handle_t handle,
                                       i2s_event_data_t *event,
                                       void *user_ctx)
@@ -118,8 +223,7 @@ static bool IRAM_ATTR pdm_isr_on_recv(i2s_chan_handle_t handle,
 
 bool IRAM_ATTR pdm_isr_on_recv_trampoline(void *ctx)
 {
-  PDMClass *self = static_cast<PDMClass *>(ctx);
-  self->_on_recv_isr();
+  static_cast<PDMClass *>(ctx)->_on_recv_isr();
   return false;
 }
 
@@ -142,14 +246,13 @@ void PDMClass::_dispatch_loop()
 {
   while (_dispatch_running) {
     if (xSemaphoreTake(_event_sem, pdMS_TO_TICKS(100)) == pdTRUE) {
-      void (*cb)() = _user_cb;   // single-word read; no need to lock
+      void (*cb)() = _user_cb;
       if (cb) {
         cb();
         _user_callbacks++;
       }
     }
   }
-  // Signal end() we're leaving, then self-delete.
   TaskHandle_t self = _dispatch_task;
   _dispatch_task = nullptr;
   vTaskDelete(self);
@@ -157,7 +260,7 @@ void PDMClass::_dispatch_loop()
 
 bool PDMClass::_start_dispatch_task()
 {
-  if (_dispatch_task != nullptr) return true;   // already up
+  if (_dispatch_task != nullptr) return true;
   if (_event_sem == nullptr) {
     _event_sem = xSemaphoreCreateBinary();
     if (_event_sem == nullptr) return false;
@@ -175,53 +278,46 @@ void PDMClass::_stop_dispatch_task()
     return;
   }
   _dispatch_running = false;
-  // Wake the task if it's blocked in xSemaphoreTake.
   xSemaphoreGive(_event_sem);
-  // Wait for task to acknowledge exit (sets _dispatch_task=nullptr).
-  while (_dispatch_task != nullptr) {
-    vTaskDelay(pdMS_TO_TICKS(2));
-  }
+  while (_dispatch_task != nullptr) vTaskDelay(pdMS_TO_TICKS(2));
   vSemaphoreDelete(_event_sem);
   _event_sem = nullptr;
 }
 
 void PDMClass::onReceive(void (*cb)())
 {
-  i2s_chan_handle_t h = _pdm_i2s.rxChan();
-  if (h == nullptr) return;   // begin() not called yet
+  if (_rx_chan == nullptr) return;
 
   if (cb == nullptr) {
-    // Detach: clear user pointer, stop task. The IDF channel keeps
-    // running — the caller can still poll PDM.read().
     _user_cb = nullptr;
     _stop_dispatch_task();
-    // Unregister IDF callback so it stops incrementing counters.
     i2s_event_callbacks_t cbs = {};
-    i2s_channel_disable(h);
-    i2s_channel_register_event_callback(h, &cbs, nullptr);
-    i2s_channel_enable(h);
+    i2s_channel_disable(_rx_chan);
+    i2s_channel_register_event_callback(_rx_chan, &cbs, nullptr);
+    i2s_channel_enable(_rx_chan);
     return;
   }
 
-  // First time (or after detach): bring the dispatch task up and
-  // register with IDF. IDF requires the channel be disabled during
-  // register_event_callback.
   _user_cb = cb;
   if (!_start_dispatch_task()) return;
 
   i2s_event_callbacks_t cbs = {};
   cbs.on_recv = pdm_isr_on_recv;
-  i2s_channel_disable(h);
-  i2s_channel_register_event_callback(h, &cbs, this);
-  i2s_channel_enable(h);
+  i2s_channel_disable(_rx_chan);
+  i2s_channel_register_event_callback(_rx_chan, &cbs, this);
+  i2s_channel_enable(_rx_chan);
 }
 
-// ---------------------------------------------------------------
+// ------------------------------------------------------------------
 // I2SEventClass
-// ---------------------------------------------------------------
+// ------------------------------------------------------------------
 
 I2SEventClass::I2SEventClass()
-  : _rx_cb(nullptr), _tx_cb(nullptr),
+  : _tx_chan(nullptr), _rx_chan(nullptr), _channel_open(false),
+    _bclk(-1), _ws(-1), _dout(-1), _din(-1), _mclk(-1),
+    _requested_bytes(BUFFER_SIZE), _effective_bytes(0),
+    _dma_desc_num(4), _dma_frame_num(240),
+    _rx_cb(nullptr), _tx_cb(nullptr),
     _rx_sem(nullptr), _tx_sem(nullptr),
     _rx_task(nullptr), _tx_task(nullptr),
     _rx_running(false), _tx_running(false),
@@ -230,10 +326,150 @@ I2SEventClass::I2SEventClass()
 {
 }
 
-I2SEventClass::~I2SEventClass()
+I2SEventClass::~I2SEventClass() { endEvents(); }
+
+void I2SEventClass::setPins(int8_t bclk, int8_t ws, int8_t dout,
+                            int8_t din, int8_t mclk)
+{
+  _bclk = bclk; _ws = ws; _dout = dout; _din = din; _mclk = mclk;
+}
+
+void I2SEventClass::_compute_dma_params_from_bytes(int target_bytes,
+                                                   i2s_slot_mode_t ch,
+                                                   i2s_data_bit_width_t bits)
+{
+  int slots = (ch == I2S_SLOT_MODE_STEREO) ? 2 : 1;
+  int bytes_per_frame = slots * ((int)bits / 8);
+  if (bytes_per_frame < 1) bytes_per_frame = 2;
+  int desc = 4;
+  int frames = target_bytes / (desc * bytes_per_frame);
+  if (frames < 8)    frames = 8;
+  if (frames > 4092) frames = 4092;
+  _dma_desc_num  = desc;
+  _dma_frame_num = frames;
+  _effective_bytes = desc * frames * bytes_per_frame;
+}
+
+int  I2SEventClass::bufferSize() const
+{
+  return _channel_open ? _effective_bytes : _requested_bytes;
+}
+
+bool I2SEventClass::setBufferSize(int size)
+{
+  if (_channel_open) return false;
+  if (size <= 0)     return false;
+  _requested_bytes = size;
+  return true;
+}
+
+bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
+                          i2s_data_bit_width_t bits_cfg,
+                          i2s_slot_mode_t ch, int8_t slot_mask)
+{
+  (void)slot_mask;
+  if (_channel_open) return false;
+  if (mode != I2S_MODE_STD) {
+    Serial.println("I2SEventClass: only I2S_MODE_STD is supported here");
+    return false;
+  }
+
+  _compute_dma_params_from_bytes(_requested_bytes, ch, bits_cfg);
+
+  i2s_chan_config_t chan_cfg = {
+      .id = I2S_NUM_AUTO,
+      .role = I2S_ROLE_MASTER,
+      .dma_desc_num  = (uint32_t)_dma_desc_num,
+      .dma_frame_num = (uint32_t)_dma_frame_num,
+      .auto_clear = true,
+      .auto_clear_before_cb = false,
+      .allow_pd = false,
+      .intr_priority = 0,
+  };
+
+  // Create BOTH tx and rx to mirror ESP_I2S's STD-mode behavior.
+  if (i2s_new_channel(&chan_cfg, &_tx_chan, &_rx_chan) != ESP_OK) {
+    Serial.println("I2S STD: i2s_new_channel failed");
+    return false;
+  }
+
+  i2s_std_config_t std_cfg = {
+      .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(rate),
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bits_cfg, ch),
+      .gpio_cfg = {
+          .mclk = (gpio_num_t)_mclk,
+          .bclk = (gpio_num_t)_bclk,
+          .ws   = (gpio_num_t)_ws,
+          .dout = (gpio_num_t)_dout,
+          .din  = (gpio_num_t)_din,
+          .invert_flags = { .mclk_inv = 0, .bclk_inv = 0, .ws_inv = 0 },
+      },
+  };
+
+  if (i2s_channel_init_std_mode(_tx_chan, &std_cfg) != ESP_OK) {
+    Serial.println("I2S STD: init_std_mode (tx) failed");
+    goto fail;
+  }
+  if (i2s_channel_init_std_mode(_rx_chan, &std_cfg) != ESP_OK) {
+    Serial.println("I2S STD: init_std_mode (rx) failed");
+    goto fail;
+  }
+  if (i2s_channel_enable(_tx_chan) != ESP_OK) goto fail;
+  if (i2s_channel_enable(_rx_chan) != ESP_OK) goto fail;
+
+  _channel_open = true;
+  return true;
+
+fail:
+  if (_tx_chan) { i2s_del_channel(_tx_chan); _tx_chan = nullptr; }
+  if (_rx_chan) { i2s_del_channel(_rx_chan); _rx_chan = nullptr; }
+  return false;
+}
+
+bool I2SEventClass::end()
 {
   endEvents();
+  if (_tx_chan) {
+    i2s_channel_disable(_tx_chan);
+    i2s_del_channel(_tx_chan);
+    _tx_chan = nullptr;
+  }
+  if (_rx_chan) {
+    i2s_channel_disable(_rx_chan);
+    i2s_del_channel(_rx_chan);
+    _rx_chan = nullptr;
+  }
+  _channel_open = false;
+  return true;
 }
+
+size_t I2SEventClass::write(const uint8_t *buffer, size_t size)
+{
+  if (_tx_chan == nullptr) return 0;
+  size_t written = 0;
+  esp_err_t err = i2s_channel_write(_tx_chan, buffer, size, &written,
+                                    portMAX_DELAY);
+  if (err != ESP_OK) return 0;
+  return written;
+}
+
+size_t I2SEventClass::readBytes(char *buffer, size_t size)
+{
+  if (_rx_chan == nullptr) return 0;
+  size_t got = 0;
+  esp_err_t err = i2s_channel_read(_rx_chan, buffer, size, &got,
+                                   portMAX_DELAY);
+  if (err != ESP_OK) return 0;
+  return got;
+}
+
+int I2SEventClass::available()
+{
+  if (_rx_chan == nullptr) return 0;
+  return _effective_bytes;  // rough hint; matches ESP_I2S semantics
+}
+
+// ---- Phase 4 callback plumbing (identical pattern to PDM) ----
 
 bool IRAM_ATTR i2sev_isr_on_recv_trampoline(void *ctx);
 bool IRAM_ATTR i2sev_isr_on_sent_trampoline(void *ctx);
@@ -311,35 +547,20 @@ void I2SEventClass::_tx_loop()
 
 bool I2SEventClass::_register_callbacks()
 {
-  // Choose the correct channel handle. On PDM instances this class
-  // isn't used (PDMClass owns its own I2SClass); here we're on the
-  // STD path so rxChan() is for input, txChan() for output.
-  //
-  // We register once with whichever callbacks are currently wanted
-  // (either or both). IDF replaces the whole callback set on each
-  // register call, so we always pass the combined struct.
   i2s_event_callbacks_t cbs = {};
   if (_rx_cb) cbs.on_recv = i2sev_isr_on_recv;
   if (_tx_cb) cbs.on_sent = i2sev_isr_on_sent;
 
-  // For a mixed-direction channel we still get one handle each; the
-  // IDF requires calling register_event_callback per handle. STD
-  // sketches in this library are TX-only via `I2S.write`, but future
-  // full-duplex STD would populate both. Handle both cases.
-  i2s_chan_handle_t rx = rxChan();
-  i2s_chan_handle_t tx = txChan();
   bool ok = true;
-  if (rx != nullptr) {
-    esp_err_t err = i2s_channel_disable(rx);
-    (void)err;   // may already be disabled
-    if (i2s_channel_register_event_callback(rx, &cbs, this) != ESP_OK) ok = false;
-    i2s_channel_enable(rx);
+  if (_rx_chan) {
+    i2s_channel_disable(_rx_chan);
+    if (i2s_channel_register_event_callback(_rx_chan, &cbs, this) != ESP_OK) ok = false;
+    i2s_channel_enable(_rx_chan);
   }
-  if (tx != nullptr && tx != rx) {
-    esp_err_t err = i2s_channel_disable(tx);
-    (void)err;
-    if (i2s_channel_register_event_callback(tx, &cbs, this) != ESP_OK) ok = false;
-    i2s_channel_enable(tx);
+  if (_tx_chan && _tx_chan != _rx_chan) {
+    i2s_channel_disable(_tx_chan);
+    if (i2s_channel_register_event_callback(_tx_chan, &cbs, this) != ESP_OK) ok = false;
+    i2s_channel_enable(_tx_chan);
   }
   return ok;
 }
@@ -357,7 +578,6 @@ void I2SEventClass::onReceive(void (*cb)())
     _register_callbacks();
     return;
   }
-
   _rx_cb = cb;
   if (_rx_task == nullptr) {
     _rx_sem = xSemaphoreCreateBinary();
@@ -380,7 +600,6 @@ void I2SEventClass::onTransmit(void (*cb)())
     _register_callbacks();
     return;
   }
-
   _tx_cb = cb;
   if (_tx_task == nullptr) {
     _tx_sem = xSemaphoreCreateBinary();

@@ -64,7 +64,17 @@ extern "C"
 #define CYBERON_FILEPATH    "Cyberon_License"  
 #elif defined (_VARIANT_RAK3112_)
 #define CYBERON_FILEPATH    "Cyberon_License"
-#define Stereo    2
+// Phase 5 (driver_updates_plan.md step 4): the RAK4631 branch of this
+// library uses a `Stereo` macro (see other examples), but no RAK3112
+// code references it and the name collides with common user variable
+// names. Removed. Use i2s_slot_mode_t I2S_SLOT_MODE_STEREO (or the
+// integer literal 2) instead.
+//
+// BUFFER_SIZE is now a per-instance *default*, not a hard cap. Users
+// can override via PDM.setBufferSize(size) / I2S.setBufferSize(size)
+// before begin() — those change the real IDF DMA sizing on the RAK3112
+// path. Keeping BUFFER_SIZE for source compatibility with existing
+// sketches that allocate `short sampleBuffer[BUFFER_SIZE]`.
 #define BUFFER_SIZE   1920
 #endif
 
