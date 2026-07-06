@@ -3,6 +3,9 @@
 #define _PDM_H_INCLUDED
 
 #include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 #include "ESP_I2S.h"
 
 // Fallback BUFFER_SIZE for standalone PDM.h usage. `audio.h` defines
@@ -13,40 +16,29 @@
 #define BUFFER_SIZE 1920
 #endif
 
-// Phase 2 (driver_updates_plan.md): default port mapping on ESP32-S3
-//
-//   PDM  RX  ->  I2S_NUM_0   (ESP32-S3 only supports PDM_RX on port 0)
-//   STD I/O ->  I2S_NUM_1
-//
-// The mapping is enforced by ownership, not by an explicit port id:
-// `PDMClass` owns a private `I2SClass _pdm_i2s` instance, and the
-// library-wide global `I2S` is a *separate* `I2SClass`. Because
-// PDM_RX is only supported on I2S_NUM_0, the IDF (via
-// `id = I2S_NUM_AUTO`) assigns each instance to a different port.
-//
-// Phase 3 (driver_updates_plan.md): API foundation + real available()
-//
-// `ESP_I2S::available()` is deceptive — it returns a compile-time
-// constant (`I2S_READ_CHUNK_SIZE`), not the actual DMA fill. So
-// PDMClass keeps its own staging buffer, filled by non-blocking
-// `i2s_channel_read` on demand:
-//   - available()  reports the real fill of the staging buffer.
-//   - read()       drains from staging first, then triggers a refill.
-// Staging is small (`PDM_STAGING_SIZE`, two DMA descriptors), so
-// latency addition is bounded (~120 ms at 16 kHz worst case, only if
-// the caller lets the buffer sit full).
-//
-// I2SClass (upstream ESP_I2S, used directly as the library-wide `I2S`)
-// still exposes its own `available()` / `readBytes()` / `write()` for
-// STD-mode users — no wrapper needed on that side.
-
-// Staging buffer size, in bytes. Two DMA descriptors' worth.
-// Enough headroom for available() to show real accumulation across
-// polling ticks, small enough to keep latency addition bounded.
 #ifndef PDM_STAGING_SIZE
 #define PDM_STAGING_SIZE (2 * 1920)
 #endif
 
+// Phase 2 — dual-port full duplex.
+// Phase 3 — real available() via internal staging buffer.
+// Phase 4 — Arduino-style event callbacks with FreeRTOS task dispatch.
+//
+// `PDMClass::onReceive(cb)` registers a callback that fires whenever
+// the IDF signals a new DMA descriptor is ready. The IDF ISR posts to
+// a FreeRTOS binary semaphore; a dedicated dispatch task (core 0,
+// priority 5) takes the semaphore and calls `cb()` in task context.
+// User code inside `cb()` may call any Arduino-safe API, including
+// `PDM.read()` to drain the staging buffer.
+//
+// Concurrency contract:
+//   - If you register onReceive(), consume samples FROM the callback.
+//     Do NOT poll PDM.read() from the main loop while a callback is
+//     registered — the staging buffer is single-consumer and has no
+//     internal lock.
+//   - Pass nullptr to onReceive() to detach; `end()` also detaches.
+//   - Counters (`dmaEvents()`, `droppedEvents()`, `userCallbacks()`)
+//     are volatile updates safe to sample from any core.
 class PDMClass
 {
 public:
@@ -55,43 +47,112 @@ public:
   int begin(int channels, long sampleRate);
   void end();
 
-  // Returns the number of *bytes* held in the internal staging
-  // buffer, refilling non-blocking from the IDF DMA ring first.
-  // Matches the Arduino nRF52 PDM library convention (BYTES, not
-  // samples). Returns 0 before begin() or after end().
   int available();
-
-  // Reads at most `size` bytes into `buffer`. Returns the number of
-  // bytes actually written. Data is drained from the internal
-  // staging buffer first; if that runs dry mid-call, we pull more
-  // from the IDF non-blocking. Excess DMA bytes stay in staging (or
-  // in the IDF ring) between calls, so repeated small reads preserve
-  // sample order.
   virtual int read(void* buffer, size_t size);
-
-  // Returns the configured DMA buffer length for this instance, in
-  // bytes. Phase 3 reports the compile-time `BUFFER_SIZE` default
-  // from `audio.h`. Phase 5 will allow this to diverge per-instance
-  // via `setBufferSize()`.
   int bufferSize() const { return _buffer_size; }
+
+  // Phase 4. Register or replace the receive callback. Pass nullptr
+  // to detach. Must be called after begin() — the underlying IDF
+  // channel handle is only valid then. Calling before begin() is a
+  // no-op (the pointer is not remembered).
+  void onReceive(void (*cb)());
+
+  // Counters for verification / diagnostics. Volatile updates; snap
+  // to a local before printing if you care about atomicity across
+  // multi-word writes.
+  unsigned long dmaEvents()      const { return _dma_events; }
+  unsigned long droppedEvents()  const { return _dropped_events; }
+  unsigned long userCallbacks()  const { return _user_callbacks; }
+  // Timestamp (esp_timer_get_time / micros() domain) of the last
+  // ISR fire. Subtract from micros() at user-callback entry to get
+  // the driver-owned dispatch latency (ISR → task wakeup → user cb).
+  unsigned long lastIsrMicros()  const { return _last_isr_us; }
 
 private:
   I2SClass _pdm_i2s;
   int _buffer_size;
 
-  // Staging buffer + cursors. Bytes at [_staging_pos .. _staging_avail)
-  // are ready for read(); the rest of the buffer is free space.
   uint8_t _staging[PDM_STAGING_SIZE];
   size_t  _staging_pos;
   size_t  _staging_avail;
 
-  // Non-blocking pull from the IDF into whatever room is free in the
-  // staging buffer. Idempotent; safe to call on every available() /
-  // read() entry.
   void _pump();
+
+  // Callback plumbing.
+  void (*_user_cb)();
+  SemaphoreHandle_t _event_sem;
+  TaskHandle_t      _dispatch_task;
+  volatile bool     _dispatch_running;
+  volatile unsigned long _dma_events;
+  volatile unsigned long _dropped_events;
+  volatile unsigned long _user_callbacks;
+  volatile unsigned long _last_isr_us;
+
+  // ISR entry points live at file scope in PDM.cpp so the IDF's
+  // exact callback types don't leak into user-facing headers. They
+  // call into these package-private helpers via user_ctx.
+  friend bool pdm_isr_on_recv_trampoline(void *ctx);
+  void _on_recv_isr();
+
+  static void _dispatch_task_entry(void *ctx);
+  void _dispatch_loop();
+  bool _start_dispatch_task();
+  void _stop_dispatch_task();
 };
 
 extern PDMClass PDM;
-extern I2SClass I2S;
+
+// Phase 4. The library-wide `I2S` global is now an `I2SEventClass`
+// (subclass of ESP_I2S's `I2SClass`). Callers that only use base
+// methods (`begin`, `setPins`, `write`, `readBytes`, `available`,
+// `end`) see no behavior change — an `I2SEventClass` IS-A
+// `I2SClass`. Add `I2S.onReceive(cb)` / `I2S.onTransmit(cb)` for
+// event-driven use.
+class I2SEventClass : public I2SClass
+{
+public:
+  I2SEventClass();
+  ~I2SEventClass();
+
+  // RX (STD input) event — DMA descriptor ready.
+  void onReceive(void (*cb)());
+  // TX (STD output) event — DMA descriptor sent.
+  void onTransmit(void (*cb)());
+
+  unsigned long rxDmaEvents()     const { return _rx_dma_events; }
+  unsigned long rxDroppedEvents() const { return _rx_dropped_events; }
+  unsigned long rxUserCallbacks() const { return _rx_user_callbacks; }
+  unsigned long txDmaEvents()     const { return _tx_dma_events; }
+  unsigned long txDroppedEvents() const { return _tx_dropped_events; }
+  unsigned long txUserCallbacks() const { return _tx_user_callbacks; }
+
+  // Detach both callbacks and stop dispatch tasks. Safe to call
+  // before or after the underlying I2SClass::end().
+  void endEvents();
+
+private:
+  void (*_rx_cb)();
+  void (*_tx_cb)();
+  SemaphoreHandle_t _rx_sem;
+  SemaphoreHandle_t _tx_sem;
+  TaskHandle_t      _rx_task;
+  TaskHandle_t      _tx_task;
+  volatile bool     _rx_running;
+  volatile bool     _tx_running;
+  volatile unsigned long _rx_dma_events, _rx_dropped_events, _rx_user_callbacks;
+  volatile unsigned long _tx_dma_events, _tx_dropped_events, _tx_user_callbacks;
+
+  bool _register_callbacks();
+  friend bool i2sev_isr_on_recv_trampoline(void *ctx);
+  friend bool i2sev_isr_on_sent_trampoline(void *ctx);
+  void _on_recv_isr();
+  void _on_sent_isr();
+  static void _rx_task_entry(void *ctx);
+  static void _tx_task_entry(void *ctx);
+  void _rx_loop();
+  void _tx_loop();
+};
+
+extern I2SEventClass I2S;
 
 #endif
