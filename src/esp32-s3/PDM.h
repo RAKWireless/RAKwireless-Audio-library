@@ -20,35 +20,33 @@
 //
 // The mapping is enforced by ownership, not by an explicit port id:
 // `PDMClass` owns a private `I2SClass _pdm_i2s` instance, and the
-// library-wide global `I2S` is a *separate* `I2SClass`. ESP_I2S calls
-// `i2s_new_channel` with `id = I2S_NUM_AUTO`, so the IDF picks the
-// next available port for each instance. Because PDM_RX is only
-// supported on I2S_NUM_0, that instance lands there; the STD instance
-// then lands on I2S_NUM_1. The two peripherals run concurrently — a
-// later `I2S.begin(I2S_MODE_STD, …)` no longer tears down the PDM
-// path the way it did when both classes shared one global `I2S`.
+// library-wide global `I2S` is a *separate* `I2SClass`. Because
+// PDM_RX is only supported on I2S_NUM_0, the IDF (via
+// `id = I2S_NUM_AUTO`) assigns each instance to a different port.
 //
-// Phase 3 (driver_updates_plan.md): API foundation.
+// Phase 3 (driver_updates_plan.md): API foundation + real available()
 //
-// PDMClass exposes:
-//   int available()   — bytes currently held in the IDF DMA ring,
-//                       matching the Arduino nRF52 PDM convention
-//                       (BYTES, not samples).
-//   int read(buf,sz)  — at-most-sz; preserves order across calls
-//                       (Phase 2).
-//   int bufferSize()  — configured DMA buffer length for this
-//                       instance, in bytes. Phase 3 ships the getter;
-//                       Phase 5 will add a matching setBufferSize().
-//                       Until then, the value tracks the BUFFER_SIZE
-//                       compile-time default from `audio.h`.
+// `ESP_I2S::available()` is deceptive — it returns a compile-time
+// constant (`I2S_READ_CHUNK_SIZE`), not the actual DMA fill. So
+// PDMClass keeps its own staging buffer, filled by non-blocking
+// `i2s_channel_read` on demand:
+//   - available()  reports the real fill of the staging buffer.
+//   - read()       drains from staging first, then triggers a refill.
+// Staging is small (`PDM_STAGING_SIZE`, two DMA descriptors), so
+// latency addition is bounded (~120 ms at 16 kHz worst case, only if
+// the caller lets the buffer sit full).
 //
 // I2SClass (upstream ESP_I2S, used directly as the library-wide `I2S`)
-// already provides:
-//   int available()
-//   size_t readBytes(buf, size)
-//   size_t write(buf, size)
-// — no wrapper needed. Phase 5 will add a setBufferSize() on the I2S
-// side too; until then the IDF default (~6 * 240 = 1440 frames) holds.
+// still exposes its own `available()` / `readBytes()` / `write()` for
+// STD-mode users — no wrapper needed on that side.
+
+// Staging buffer size, in bytes. Two DMA descriptors' worth.
+// Enough headroom for available() to show real accumulation across
+// polling ticks, small enough to keep latency addition bounded.
+#ifndef PDM_STAGING_SIZE
+#define PDM_STAGING_SIZE (2 * 1920)
+#endif
+
 class PDMClass
 {
 public:
@@ -57,16 +55,18 @@ public:
   int begin(int channels, long sampleRate);
   void end();
 
-  // Returns the number of *bytes* currently available to read from
-  // the PDM DMA ring. Matches the Arduino nRF52 PDM library
-  // convention so cross-core ports do not need conditional sizing.
-  // Returns 0 before begin() or after end().
+  // Returns the number of *bytes* held in the internal staging
+  // buffer, refilling non-blocking from the IDF DMA ring first.
+  // Matches the Arduino nRF52 PDM library convention (BYTES, not
+  // samples). Returns 0 before begin() or after end().
   int available();
 
   // Reads at most `size` bytes into `buffer`. Returns the number of
-  // bytes actually written. Excess DMA bytes are retained by the
-  // ESP-IDF i2s_channel_read ring between calls, so repeated small
-  // reads preserve sample order without dropping data.
+  // bytes actually written. Data is drained from the internal
+  // staging buffer first; if that runs dry mid-call, we pull more
+  // from the IDF non-blocking. Excess DMA bytes stay in staging (or
+  // in the IDF ring) between calls, so repeated small reads preserve
+  // sample order.
   virtual int read(void* buffer, size_t size);
 
   // Returns the configured DMA buffer length for this instance, in
@@ -76,16 +76,19 @@ public:
   int bufferSize() const { return _buffer_size; }
 
 private:
-  // Private I2S binding for the PDM_RX path. Constructed alongside
-  // the global `I2S` below; the IDF assigns it I2S_NUM_0 because
-  // PDM_RX is only supported there on ESP32-S3.
   I2SClass _pdm_i2s;
-  // Per-instance buffer state (Phase 3 step 3). Defaults to the
-  // compile-time BUFFER_SIZE macro from audio.h for backward
-  // compatibility with the existing examples. Setter arrives in
-  // Phase 5; do NOT try to make BUFFER_SIZE track this at compile
-  // time — it is intentionally a per-instance runtime field now.
   int _buffer_size;
+
+  // Staging buffer + cursors. Bytes at [_staging_pos .. _staging_avail)
+  // are ready for read(); the rest of the buffer is free space.
+  uint8_t _staging[PDM_STAGING_SIZE];
+  size_t  _staging_pos;
+  size_t  _staging_avail;
+
+  // Non-blocking pull from the IDF into whatever room is free in the
+  // staging buffer. Idempotent; safe to call on every available() /
+  // read() entry.
+  void _pump();
 };
 
 extern PDMClass PDM;

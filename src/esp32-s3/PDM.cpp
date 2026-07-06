@@ -1,13 +1,16 @@
 #if defined(_VARIANT_RAK3112_)  || defined(ARDUINO_RAKWIRELESS_RAK3112)   //rak3112
 
 #include "PDM.h"
+#include <string.h>
 
 PDMClass PDM;
 I2SClass I2S;
 
 
 PDMClass::PDMClass()
-  : _buffer_size(BUFFER_SIZE)
+  : _buffer_size(BUFFER_SIZE),
+    _staging_pos(0),
+    _staging_avail(0)
 {
 }
 
@@ -34,39 +37,67 @@ int PDMClass::begin(int channels, long sampleRate)
     return 0;
   }
 
+  _staging_pos = 0;
+  _staging_avail = 0;
   return 1;
 }
 
 void PDMClass::end()
 {
   _pdm_i2s.end();
+  _staging_pos = 0;
+  _staging_avail = 0;
 }
 
+void PDMClass::_pump()
+{
+  // Recycle: if the caller has consumed everything, reset the
+  // cursors so we get a full contiguous fill window at [0..size).
+  if (_staging_pos == _staging_avail) {
+    _staging_pos = 0;
+    _staging_avail = 0;
+  } else if (_staging_pos > 0) {
+    // Shift the unconsumed tail down so pump() can append at the end.
+    // The staging buffer is small (a few KB), so memmove is cheap.
+    size_t pending = _staging_avail - _staging_pos;
+    memmove(_staging, _staging + _staging_pos, pending);
+    _staging_pos = 0;
+    _staging_avail = pending;
+  }
+
+  size_t room = sizeof(_staging) - _staging_avail;
+  if (room == 0) return;   // caller isn't draining; don't over-buffer
+
+  i2s_chan_handle_t h = _pdm_i2s.rxChan();
+  if (h == NULL) return;
+
+  size_t got = 0;
+  // Non-blocking pull. Return code is ESP_OK or ESP_ERR_TIMEOUT; both
+  // are fine — `got` reflects the partial fill. Anything else means
+  // the channel isn't in a readable state; treat as zero.
+  esp_err_t err = i2s_channel_read(h, _staging + _staging_avail, room,
+                                   &got, 0);
+  if (err != ESP_OK && err != ESP_ERR_TIMEOUT) {
+    got = 0;
+  }
+  _staging_avail += got;
+}
 
 int PDMClass::available()
 {
-  // ESP_I2S::available() reports BYTES present in the IDF DMA ring
-  // for the RX channel. Forward unchanged — Arduino's nRF52 PDM
-  // library uses the same byte semantics, so cross-core code can call
-  // PDM.available() / PDM.read() without conditional sizing.
-  return _pdm_i2s.available();
+  _pump();
+  return (int)(_staging_avail - _staging_pos);
 }
-
 
 int PDMClass::read(void* buffer, size_t size)
 {
-  // Phase 2 step 4: honor `size`. The previous implementation read
-  // `available()` bytes regardless of the caller's buffer length,
-  // which silently overran small buffers. Clamping to `size` is safe
-  // because i2s_channel_read leaves any unread bytes in the IDF DMA
-  // ring for the next call — repeated small reads preserve sample
-  // order without dropping data.
-  size_t available_bytes = _pdm_i2s.available();
-  if (available_bytes == 0) {
-    return 0;
-  }
-  size_t to_read = (available_bytes < size) ? available_bytes : size;
-  return _pdm_i2s.readBytes((char *)buffer, to_read);
+  _pump();
+  size_t pending = _staging_avail - _staging_pos;
+  if (pending == 0) return 0;
+  size_t to_copy = (pending < size) ? pending : size;
+  memcpy(buffer, _staging + _staging_pos, to_copy);
+  _staging_pos += to_copy;
+  return (int)to_copy;
 }
 
 #endif

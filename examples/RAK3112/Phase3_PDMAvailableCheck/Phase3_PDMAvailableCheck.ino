@@ -26,6 +26,13 @@
 TPT29555 Expander1(0x23);
 TPT29555 Expander2(0x25);
 
+// Single static scratch buffer shared by drain helpers. Keeping this
+// off the task stack — earlier versions declared per-function 4 KB
+// arrays and blew the ~8 KB loopTask stack canary. 512 B is more
+// than one PDM DMA descriptor, so a single read pulls whatever the
+// IDF has queued.
+static uint8_t g_scratch[512];
+
 static void rak18003Init()
 {
   while (!Expander1.begin()) { Serial.println("waiting expander1"); delay(200); }
@@ -38,35 +45,53 @@ static void rak18003Init()
   Expander2.pinMode(3, OUTPUT); Expander2.digitalWrite(3, 0);
 }
 
+// Drain up to `max_iters` DMA descriptors. Bounded because DMA
+// refills as fast as we read at line-rate, so an unbounded loop hangs.
+// A short bound is fine — a few ms of PDM data getting discarded here
+// is meaningless for the following checks.
+static void drain_bounded(int max_iters)
+{
+  for (int i = 0; i < max_iters; i++) {
+    if (PDM.available() <= 0) return;
+    (void)PDM.read(g_scratch, sizeof(g_scratch));
+  }
+}
+
 static void test1_available_grow_drain()
 {
   Serial.println();
-  Serial.println("=== Test 1: available() growth / drain over ~30 s ===");
-  Serial.println("Pattern: 5 ticks of 'idle' (no reads) to grow,");
-  Serial.println("         then 5 ticks of 'drain' (read everything).");
-  Serial.println("ms,available,phase");
+  Serial.println("=== Test 1: available() grow / drain over ~30 s ===");
+  Serial.println("PDMClass owns a small staging buffer (2 x DMA");
+  Serial.println("chunk = 3840 B) filled by non-blocking pulls from");
+  Serial.println("the IDF. Expected pattern:");
+  Serial.println(" - idle ticks (5): staging accumulates, avail");
+  Serial.println("   grows and plateaus near the cap.");
+  Serial.println(" - drain ticks (5): full bounded drain, then");
+  Serial.println("   available() sampled — should be 0.");
+  Serial.println("ms,phase,avail_before,avail_after_drain");
 
-  uint8_t scratch[4096];
   const uint32_t start = millis();
   uint32_t tick_count = 0;
 
   while (millis() - start < 30000) {
     bool draining = ((tick_count / 5) & 1) == 1;
-    int avail = PDM.available();
-    Serial.printf("%lu,%d,%s\r\n",
-                  (unsigned long)(millis() - start),
-                  avail,
-                  draining ? "drain" : "idle");
-    if (draining && avail > 0) {
-      int want = avail < (int)sizeof(scratch) ? avail : (int)sizeof(scratch);
-      (void)PDM.read(scratch, want);
+    int avail_before = PDM.available();
+    int avail_after = avail_before;
+    if (draining) {
+      // Bounded full drain — up to 32 iterations of 512 B each,
+      // way more than accumulates in 500 ms of audio.
+      for (int i = 0; i < 32; i++) {
+        if (PDM.available() <= 0) break;
+        (void)PDM.read(g_scratch, sizeof(g_scratch));
+      }
+      avail_after = PDM.available();
     }
+    Serial.printf("%lu,%s,%d,%d\r\n",
+                  (unsigned long)(millis() - start),
+                  draining ? "drain" : "idle",
+                  avail_before, avail_after);
     delay(500);
     tick_count++;
-  }
-  // Drain to a clean baseline before the next test.
-  while (PDM.available() > 0) {
-    (void)PDM.read(scratch, sizeof(scratch));
   }
 }
 
@@ -99,11 +124,9 @@ static void test3_order_preserved()
   Serial.println();
   Serial.println("=== Test 3: order preserved across small reads ===");
 
-  // Drain so both halves come from the same fresh DMA stream.
-  uint8_t scratch[4096];
-  while (PDM.available() > 0) {
-    (void)PDM.read(scratch, sizeof(scratch));
-  }
+  // Drain so both halves come from the same fresh DMA stream. Bounded
+  // — DMA refills continuously so the loop must not be unbounded.
+  drain_bounded(8);
   delay(200);  // let ~3200 bytes (100 ms @ 16 kHz mono 16-bit) accumulate
 
   // Two 32-byte reads, expected to be contiguous in the input stream.
