@@ -104,26 +104,26 @@ int PDMClass::read(void* buffer, size_t size)
 // File-scope ISR trampoline. IDF passes `user_ctx` (our PDMClass*)
 // so we can route back into the instance without dragging IDF types
 // into the header.
-bool pdm_isr_on_recv_trampoline(void *ctx);   // fwd decl of friend
-static bool pdm_isr_on_recv(i2s_chan_handle_t handle,
-                            i2s_event_data_t *event,
-                            void *user_ctx)
+// IDF requires ISR callbacks live in IRAM — a flash-cache miss during
+// an interrupt context would crash. Every function reachable from
+// the IDF ISR path below is annotated IRAM_ATTR.
+bool IRAM_ATTR pdm_isr_on_recv_trampoline(void *ctx);   // fwd decl of friend
+static bool IRAM_ATTR pdm_isr_on_recv(i2s_chan_handle_t handle,
+                                      i2s_event_data_t *event,
+                                      void *user_ctx)
 {
   (void)handle; (void)event;
   return pdm_isr_on_recv_trampoline(user_ctx);
 }
 
-bool pdm_isr_on_recv_trampoline(void *ctx)
+bool IRAM_ATTR pdm_isr_on_recv_trampoline(void *ctx)
 {
   PDMClass *self = static_cast<PDMClass *>(ctx);
   self->_on_recv_isr();
-  // The ISR path uses xSemaphoreGiveFromISR internally; the caller
-  // decides whether to yield based on IDF's own tracking. Return
-  // false — we don't independently force a context switch.
   return false;
 }
 
-void PDMClass::_on_recv_isr()
+void IRAM_ATTR PDMClass::_on_recv_isr()
 {
   _dma_events++;
   _last_isr_us = (unsigned long)esp_timer_get_time();
@@ -235,36 +235,36 @@ I2SEventClass::~I2SEventClass()
   endEvents();
 }
 
-bool i2sev_isr_on_recv_trampoline(void *ctx);
-bool i2sev_isr_on_sent_trampoline(void *ctx);
+bool IRAM_ATTR i2sev_isr_on_recv_trampoline(void *ctx);
+bool IRAM_ATTR i2sev_isr_on_sent_trampoline(void *ctx);
 
-static bool i2sev_isr_on_recv(i2s_chan_handle_t handle,
-                              i2s_event_data_t *event,
-                              void *user_ctx)
+static bool IRAM_ATTR i2sev_isr_on_recv(i2s_chan_handle_t handle,
+                                        i2s_event_data_t *event,
+                                        void *user_ctx)
 {
   (void)handle; (void)event;
   return i2sev_isr_on_recv_trampoline(user_ctx);
 }
-static bool i2sev_isr_on_sent(i2s_chan_handle_t handle,
-                              i2s_event_data_t *event,
-                              void *user_ctx)
+static bool IRAM_ATTR i2sev_isr_on_sent(i2s_chan_handle_t handle,
+                                        i2s_event_data_t *event,
+                                        void *user_ctx)
 {
   (void)handle; (void)event;
   return i2sev_isr_on_sent_trampoline(user_ctx);
 }
 
-bool i2sev_isr_on_recv_trampoline(void *ctx)
+bool IRAM_ATTR i2sev_isr_on_recv_trampoline(void *ctx)
 {
   static_cast<I2SEventClass *>(ctx)->_on_recv_isr();
   return false;
 }
-bool i2sev_isr_on_sent_trampoline(void *ctx)
+bool IRAM_ATTR i2sev_isr_on_sent_trampoline(void *ctx)
 {
   static_cast<I2SEventClass *>(ctx)->_on_sent_isr();
   return false;
 }
 
-void I2SEventClass::_on_recv_isr()
+void IRAM_ATTR I2SEventClass::_on_recv_isr()
 {
   _rx_dma_events++;
   BaseType_t hw = pdFALSE;
@@ -272,7 +272,7 @@ void I2SEventClass::_on_recv_isr()
   if (ok != pdTRUE) _rx_dropped_events++;
   if (hw == pdTRUE) portYIELD_FROM_ISR();
 }
-void I2SEventClass::_on_sent_isr()
+void IRAM_ATTR I2SEventClass::_on_sent_isr()
 {
   _tx_dma_events++;
   BaseType_t hw = pdFALSE;
