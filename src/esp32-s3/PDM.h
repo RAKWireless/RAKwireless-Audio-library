@@ -74,11 +74,16 @@ public:
   // On success, next begin() uses this size.
   bool setBufferSize(int size);
 
-  // Sets PDM amplify_num (post-decimation digital gain). Accepts
-  // Arduino nRF52-style 0..80 gain; internally mapped to the IDF's
-  // 1..15 amplify_num range. Called any time; takes effect on next
-  // begin() OR immediately if the channel is already open (via
-  // i2s_channel_reconfig_pdm_rx_slot).
+  // Software digital gain applied in read(). Accepts Arduino
+  // nRF52-style 0..80; mapped internally to a 1..15 int multiplier
+  // and applied per-sample to the staging output with int16 saturation.
+  //
+  // Why software and not hardware: the IDF's PDM RX slot has an
+  // `amplify_num` field, but it's guarded by
+  // SOC_I2S_SUPPORTS_PDM_RX_HP_FILTER — a capability ESP32-S3 does
+  // NOT define. On this SoC the field literally doesn't exist. So
+  // gain lives in software. Takes effect immediately regardless of
+  // begin() state.
   void setGain(int gain);
 
   // Phase 4.
@@ -100,8 +105,9 @@ private:
   int  _dma_desc_num;
   int  _dma_frame_num;
 
-  // Slot config that will be programmed at begin().
+  // Gain state — software multiplier applied per-sample in read().
   int  _requested_gain;        // 0..80 arduino-style
+  int  _gain_mult;             // derived 1..15 integer multiplier
   int  _channels;              // last begin() channels
   long _sample_rate;           // last begin() rate
 

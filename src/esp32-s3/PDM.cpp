@@ -22,6 +22,7 @@ PDMClass::PDMClass()
     _dma_desc_num(4),
     _dma_frame_num(240),
     _requested_gain(0),
+    _gain_mult(1),
     _channels(1),
     _sample_rate(16000),
     _staging_pos(0),
@@ -79,18 +80,14 @@ bool PDMClass::setBufferSize(int size)
 
 void PDMClass::setGain(int gain)
 {
+  // Software gain: apply an integer multiplier in read() with int16
+  // saturation. Hardware amplify_num is only available on SoCs that
+  // define SOC_I2S_SUPPORTS_PDM_RX_HP_FILTER — ESP32-S3 does NOT, so
+  // the field literally isn't in i2s_pdm_rx_slot_config_t. Doing this
+  // in software also lets setGain() take effect immediately without
+  // a disable/reconfig/enable cycle.
   _requested_gain = gain;
-  if (_channel_open) {
-    // Reprogram slot config live.
-    i2s_pdm_rx_slot_config_t slot_cfg =
-        I2S_PDM_RX_SLOT_PCM_FMT_DEFAULT_CONFIG(
-            I2S_DATA_BIT_WIDTH_16BIT,
-            _channels == 2 ? I2S_SLOT_MODE_STEREO : I2S_SLOT_MODE_MONO);
-    slot_cfg.amplify_num = _amplify_from_gain(gain);
-    i2s_channel_disable(_rx_chan);
-    i2s_channel_reconfig_pdm_rx_slot(_rx_chan, &slot_cfg);
-    i2s_channel_enable(_rx_chan);
-  }
+  _gain_mult = _amplify_from_gain(gain);
 }
 
 int PDMClass::begin(int channels, long sampleRate)
@@ -117,11 +114,12 @@ int PDMClass::begin(int channels, long sampleRate)
     return 0;
   }
 
+  // Gain lives in software (see PDMClass::setGain); ESP32-S3 doesn't
+  // expose amplify_num on this struct.
   i2s_pdm_rx_slot_config_t slot_cfg =
       I2S_PDM_RX_SLOT_PCM_FMT_DEFAULT_CONFIG(
           I2S_DATA_BIT_WIDTH_16BIT,
           channels == 2 ? I2S_SLOT_MODE_STEREO : I2S_SLOT_MODE_MONO);
-  slot_cfg.amplify_num = _amplify_from_gain(_requested_gain);
 
   i2s_pdm_rx_clk_config_t clk_cfg = I2S_PDM_RX_CLK_DEFAULT_CONFIG((uint32_t)sampleRate);
 
@@ -205,7 +203,30 @@ int PDMClass::read(void* buffer, size_t size)
   size_t pending = _staging_avail - _staging_pos;
   if (pending == 0) return 0;
   size_t to_copy = (pending < size) ? pending : size;
-  memcpy(buffer, _staging + _staging_pos, to_copy);
+
+  if (_gain_mult <= 1) {
+    memcpy(buffer, _staging + _staging_pos, to_copy);
+  } else {
+    // Software gain with int16 saturation. Samples are int16_t LE;
+    // to_copy is expected even but we tolerate a trailing odd byte
+    // by memcpy'ing it raw (this only matters if the caller supplies
+    // an unaligned size, which none of the examples do).
+    const int mult = _gain_mult;
+    const int16_t *src = reinterpret_cast<const int16_t *>(_staging + _staging_pos);
+    int16_t *dst = reinterpret_cast<int16_t *>(buffer);
+    size_t nsamp = to_copy / 2;
+    for (size_t i = 0; i < nsamp; i++) {
+      int32_t s = (int32_t)src[i] * mult;
+      if (s >  32767) s =  32767;
+      if (s < -32768) s = -32768;
+      dst[i] = (int16_t)s;
+    }
+    if (to_copy & 1) {
+      // Odd trailing byte — pass through unchanged.
+      ((uint8_t *)buffer)[to_copy - 1] = _staging[_staging_pos + to_copy - 1];
+    }
+  }
+
   _staging_pos += to_copy;
   return (int)to_copy;
 }
