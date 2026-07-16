@@ -222,6 +222,141 @@ Then, open the .h file and copy the sound buffer to replace the example's sound 
 
 ![](assets/convert5.png)
 
+---
+
+## RAK3112 (ESP32-S3) — extended API and fixes
+
+This fork ships a rewritten RAK3112 audio path against raw ESP-IDF
+`i2s_common` / `i2s_std` / `i2s_pdm`, so runtime sizing, event callbacks,
+and dual-port full duplex all work on a stock Arduino-ESP32 v3.x install.
+The rest of this section documents what's new on the RAK3112 board target
+and how to use it. RAK4631 / RAK11310 / RAK11200 code paths are
+unchanged.
+
+### Per-rate TAS2560 amplifier support
+
+`TAS2560::begin(addr, sample_rate)` picks a rate-specific register table
+via `tas2560_dsp_coeffs_for_rate(fs)` and reprograms the chip's PLL and
+clock-error detection to match. Validated on RAK18060 hardware at:
+
+| Sample rate | Status | Source of DSP table |
+|---|---|---|
+| 8 kHz  | clean | PPC3 (ROM Mode 1, 8 Ω, Class-H, 8.6 V / 3 A) |
+| 16 kHz | clean | upstream `registers[]` |
+| 22 050 Hz | clean | upstream `registers[]` |
+| 48 kHz | clean | upstream `registers[]` |
+| 96 kHz | rate-supported, hardware validation pending | upstream `registers[]` |
+
+At 8 kHz the fork additionally widens the ESP-IDF STD slot to 32-bit
+stereo so BCLK lands at 512 kHz — inside the TAS2560 PLL lock range.
+Mono callers see no API change: `I2SEventClass::write()` interleaves each
+mono sample into both slots transparently.
+
+Sketch pattern (any supported rate):
+
+```cpp
+TAS2560 AMP_Left, AMP_Right;
+AMP_Left.begin(0x4C, /*sample_rate*/ 8000);   // picks per-rate table
+AMP_Left.set_pcm_channel(LeftMode);
+AMP_Left.set_gain(5);
+I2S.setPins(WB_IO6, WB_IO5, SDA1, SCL1);
+I2S.begin(I2S_MODE_STD, 8000, I2S_DATA_BIT_WIDTH_16BIT,
+          (i2s_slot_mode_t)1);
+```
+
+### Dual-port full duplex — PDM + STD I²S concurrent
+
+`PDMClass` and the library-wide `I2SEventClass I2S` now own separate
+`i2s_chan_handle_t`s. The IDF assigns PDM_RX to `I2S_NUM_0` (the only
+port that supports it on ESP32-S3) and STD I/O to `I2S_NUM_1`, so mic
+capture and speaker playback run concurrently:
+
+```cpp
+PDM.begin(1, 16000);   // I2S_NUM_0
+I2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, ...);  // I2S_NUM_1
+// both live at the same time
+```
+
+Pre-fork behavior was to reconfigure a single shared peripheral, so the
+second `begin()` would silently tear down the first. See
+`examples/RAK3112/PDMSerialPlotter_RAK18003` with `FULL_DUPLEX_TEST 1`
+for a working reproducer.
+
+### Event callbacks (Arduino nRF52 parity)
+
+Both classes expose `onReceive()` / `onTransmit()` matching the
+Arduino nRF52 PDM/I²S API convention. The ISR posts to a FreeRTOS
+semaphore; a dispatch task (core 0, priority 5) invokes the user
+callback in task context. Arduino-safe APIs including `PDM.read()`
+work from inside the callback.
+
+```cpp
+void mic_ready() {
+  uint8_t buf[512];
+  int n = PDM.read(buf, sizeof(buf));
+  // ...
+}
+PDM.begin(1, 16000);
+PDM.onReceive(mic_ready);   // called once per DMA descriptor
+```
+
+Bench-verified at 16 kHz mono 16-bit: 2000 events / 30 s (matches
+DMA math), zero drops, dispatch latency 11 µs mean / 13 µs max — well
+below the 15 ms DMA period. Counters exposed for diagnostics:
+`dmaEvents()`, `droppedEvents()`, `userCallbacks()`, `lastIsrMicros()`.
+
+### Runtime buffer sizing, gain, `available()`, safe reads
+
+- **`bool setBufferSize(int bytes)`** (both classes) — must be called
+  before `begin()`. Programs the real IDF DMA sizing
+  (`i2s_chan_config_t` `dma_desc_num=4`, `dma_frame_num` derived).
+  Returns `false` post-`begin()` and leaves the previous request
+  unchanged. `bufferSize()` reports the effective bytes.
+- **`void PDM.setGain(int gain)`** — Arduino-style 0..80, mapped to a
+  1..15 software multiplier applied per-sample in `read()` with int16
+  saturation. Software rather than hardware because ESP32-S3 doesn't
+  define `SOC_I2S_SUPPORTS_PDM_RX_HP_FILTER`, so the IDF's
+  `amplify_num` field literally isn't in `i2s_pdm_rx_slot_config_t` on
+  this SoC.
+- **`int PDM.available()`** — returns actual staged bytes (not a
+  compile-time constant, unlike ESP-IDF's own `available()`). Backed
+  by a private 3840-byte staging buffer that non-blocking pulls fill
+  on demand.
+- **`PDM.read(buf, size)`** honors `size` — the pre-fork version wrote
+  a full DMA block (~1920 B) regardless of the caller's buffer
+  length. Excess data stays in the IDF ring for the next call, so
+  small reads preserve sample order.
+
+### Amp mute discipline
+
+`TAS2560::set_mute()` now zeroes both the class-D power
+(`PWR_CTRL_1 = 0x03`) *and* the SPK_CTRL digital gain — caching the
+prior gain so `set_unmute()` can restore it. Belt-and-braces coverage
+across transient PLL states. Same `volume` cache pattern
+`clear_alarm()` already used.
+
+### Example sketches (`examples/RAK3112/`)
+
+Verification sketches added for each phase (in addition to the stock
+examples, all of which still work unchanged):
+
+| Sketch | Verifies |
+|---|---|
+| `AudioSmokeTest/` | Play tone → record mic → print min/max/RMS. Cross-phase regression bar. Configurable SAMPLE_RATE / AMP_VARIANT. |
+| `Phase3_PDMAvailableCheck/` | `available()` growth / drain, read-size canary, order-preservation |
+| `Phase4_CallbackCheck/` | Sustained 30 s capture, callback counters, dispatch latency, replacement, detach |
+| `Phase5_APIParityCheck/` | `setBufferSize()` before/after `begin()`, `setGain()` RMS response |
+| `PDMSerialPlotter_RAK18003/` | Original PDM plotter, plus opt-in `FULL_DUPLEX_TEST` for concurrent speaker |
+
+### Build note
+
+`library.properties` no longer sets `precompiled=true` /
+`ldflags=-lDSpotterSDK`. No precompiled `.a` shipped for ESP32-S3
+anyway, so `precompiled=true` was silently skipping the RAK3112
+`.cpp` builds. The DSPG voice-recognition examples
+(`VoiceRecognition_DSPG`, `DSPG_PlayBack`) won't link with those
+disabled — re-enable when working on DSPG.
+
 
 
 
