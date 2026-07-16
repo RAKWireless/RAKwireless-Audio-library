@@ -74,15 +74,46 @@ bool TAS2560::begin(uint8_t addr) //Sets up the Hardware
   #endif  
   return false;
 }
+// Rate-aware begin: fetch the per-rate register table via
+// tas2560_dsp_coeffs_for_rate() and send THAT instead of the stock
+// `registers[]`. Falls back to the stock table when the rate has no
+// specific tuning. Then apply_rate_dependent_init() runs to override
+// PLL / clock-error registers for the actual BCLK on our hardware.
 bool TAS2560::begin(uint8_t addr, uint32_t sample_rate)
 {
-  if (!begin(addr)) return false;
+  i2c_addr = addr;
+#if defined(_VARIANT_RAK11200_)
+  amp_i2c.set_pin(SDA, SCL);
+  if (!amp_i2c.begin(i2c_addr)) return false;
+#else
+  _wire = &Wire;
+  _wire->begin();
+  _wire->beginTransmission(i2c_addr);
+  if (_wire->endTransmission() != 0) return false;
+#endif
+  int count = 0;
+  const cfg_reg *table = tas2560_dsp_coeffs_for_rate(sample_rate, &count);
+  transmit_registers(const_cast<cfg_reg *>(table), count);
+  set_alarm();
   apply_rate_dependent_init(sample_rate);
   return true;
 }
 bool TAS2560::begin(uint8_t addr, TwoWire &theWire, uint32_t sample_rate)
 {
-  if (!begin(addr, theWire)) return false;
+  i2c_addr = addr;
+#if defined(_VARIANT_RAK11200_)
+  amp_i2c.set_pin(SDA, SCL);
+  if (!amp_i2c.begin(i2c_addr)) return false;
+#else
+  _wire = &theWire;
+  _wire->begin();
+  _wire->beginTransmission(i2c_addr);
+  if (_wire->endTransmission() != 0) return false;
+#endif
+  int count = 0;
+  const cfg_reg *table = tas2560_dsp_coeffs_for_rate(sample_rate, &count);
+  transmit_registers(const_cast<cfg_reg *>(table), count);
+  set_alarm();
   apply_rate_dependent_init(sample_rate);
   return true;
 }
@@ -101,9 +132,13 @@ bool TAS2560::begin(uint8_t addr, TwoWire &theWire, uint32_t sample_rate)
 // 96 kHz  -> 0x62
 bool TAS2560::set_sample_rate(uint32_t fs)
 {
+  // PCM_RATE (book 0x00 page 0x00 reg 0x36) encodings. My Phase 1
+  // draft used 0x12 for 8 kHz based on a guessed nibble layout; the
+  // PPC3 export at 8 kHz uses 0x30, so the low nibble at least is
+  // rate-specific but not what I guessed. 0x30 wins for 8 kHz.
   uint8_t pcm_rate;
   switch (fs) {
-    case 8000:                       pcm_rate = 0x12; break;
+    case 8000:                       pcm_rate = 0x30; break;
     case 12000:                      pcm_rate = 0x22; break;
     case 16000: case 24000:          pcm_rate = 0x32; break;
     case 32000: case 48000:          pcm_rate = 0x42; break;
@@ -149,19 +184,24 @@ void TAS2560::apply_rate_dependent_init(uint32_t fs)
   switch (fs) {
     case 8000:
     case 12000:
-      pll_j      = 0x40;  // 64 -> PLL_OUT ≈ 8.192 MHz at BCLK 128k
-      // CLK_ERR_1 default 0x03 = clock-error DSP reload + shutdown
-      // enabled. At 8 kHz the WCLK is below the chip's internal halt
-      // threshold, so every detected "halt" reloads/silences the DSP.
-      // Clear it for the low-rate path; the WCHLT/MCHLT detections
-      // are spurious here, not real clock dropouts.
-      clk_err_1  = 0x00;
-      // Mask the interrupt-mirror too, so the alarm pin doesn't fire.
-      clk_err_2  = 0x00;
+      // BCLK-widening in I2SEventClass (32-bit stereo slot at rate
+      // < 16 kHz) brings BCLK to 512 kHz — inside the TAS2560 PLL
+      // lock range.
+      //
+      // PLL_J targeting: PPC3's 8 kHz DSP + decimation tables were
+      // computed assuming BCLK 1.536 MHz with J=32, i.e. PLL_OUT ≈
+      // 49.152 MHz feeding the DSP/DAC clock tree. At our 512 kHz
+      // BCLK we need J=96 (0x60) to hit the same internal MCLK. An
+      // earlier experiment with J=16 (PLL_OUT ≈ 8.192 MHz) left the
+      // chip with PWR=0x00 — the PLL locked but the downstream
+      // divider chain saw too-low a clock to enable class-D.
+      pll_j      = 0x60;
+      clk_err_1  = 0x03;
+      clk_err_2  = 0x3F;
       break;
     default:
       pll_j      = 0x20;  // upstream default for >=16 kHz BCLK
-      clk_err_1  = 0x03;  // upstream default
+      clk_err_1  = 0x03;
       clk_err_2  = 0x3F;
       break;
   }
@@ -475,6 +515,29 @@ void TAS2560::transmit_registers(cfg_reg *r, int n)
       case CFG_META_DELAY:
           delay(r[i].param);
           break;
+      case CFG_META_BURST: {
+          // PPC3 burst format (see PPC3 exported reference code):
+          //   r[i].param  = number of DATA bytes (not including the
+          //                 leading start-register byte).
+          //   Payload bytes: [start_reg, data0, data1, ..., data_{param-1}]
+          //                 = 1 + param bytes total.
+          //   These occupy ceil((1 + param) / 2) cfg_reg entries after
+          //   the header, with padding in the last entry if odd.
+          //   Advance the index past header + payload = 1 + (param/2)+1
+          //   entries; the loop's trailing i++ contributes one, so
+          //   we add (param / 2) + 1 here to match the PPC3 reference
+          //   `i += (r[i].param / 2) + 1;`.
+          uint8_t param = r[i].param;
+          int payload_entries = (param / 2) + 1;
+          if (param == 0 || (i + 1 + payload_entries) > n) {
+            break;   // malformed — skip safely
+          }
+          uint8_t *payload = (uint8_t *)&r[i + 1];
+          uint8_t start_reg = payload[0];
+          write(start_reg, payload + 1, param);
+          i += payload_entries;   // loop's i++ takes final step past burst
+          break;
+      }
       default:
             writeRegister8(r[i].command,r[i].param);
           break;
@@ -602,17 +665,29 @@ uint8_t TAS2560::read_INT_DET2(void)
 
 void TAS2560::set_mute(void)
 {
- writeRegister8(TAS25X_PAGE, 0x00 );       //---------------
- writeRegister8(TAS25X_BOOK, 0x00 );
- writeRegister8(TAS25X_PWR_CTRL_1, 0x03 );
-
+  // Belt and braces: writing PWR_CTRL_1 = 0x03 alone disables the
+  // class-D but does NOT silence the DSP output when the chip is
+  // running with clock-error auto-mute disabled (our Phase 1 8 kHz
+  // configuration — CLK_ERR_1 = 0 keeps 128 kHz BCLK from tripping
+  // spurious mutes during playback). In that state, the DSP path
+  // freewheels whatever it last produced and remains audible.
+  //
+  // Zeroing SPK_CTRL's gain field zeroes the output regardless of
+  // DSP state, so mute now works uniformly at all rates. Cache the
+  // current gain so set_unmute() can restore it — same pattern
+  // clear_alarm() already uses for the `volume` member.
+  volume = get_gain();
+  set_gain(0);
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, 0x00);
+  writeRegister8(TAS25X_PWR_CTRL_1, 0x03);
 }
 void TAS2560::set_unmute(void)
 {
- writeRegister8(TAS25X_PAGE, 0x00 );       //---------------
- writeRegister8(TAS25X_BOOK, 0x00 );
- writeRegister8(TAS25X_PWR_CTRL_1, 0x80 );
-
+  writeRegister8(TAS25X_PAGE, 0x00);
+  writeRegister8(TAS25X_BOOK, 0x00);
+  writeRegister8(TAS25X_PWR_CTRL_1, 0x80);
+  set_gain(volume);
 }
 
 uint8_t TAS2560::set_speaker_load(uint8_t impedance)

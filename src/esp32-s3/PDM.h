@@ -211,6 +211,19 @@ private:
   int _dma_desc_num;
   int _dma_frame_num;
 
+  // 8 kHz BCLK-widening state. At sample_rate < 16 kHz we force the
+  // ESP-IDF STD slot to 32-bit stereo so that BCLK lands at
+  // 8000 * 32 * 2 = 512 kHz — inside the TAS2560 PLL lock range —
+  // and no longer requires the Phase 1 CLK_ERR = 0 workaround.
+  //
+  // If the caller asked for MONO at that rate, write() transparently
+  // duplicates each mono sample into both L and R slots; the caller's
+  // sketch keeps writing a mono buffer.
+  bool _widen_slot;                 // true when we forced 32-bit stereo
+  bool _mono_to_stereo_expand;      // true when caller asked mono but we
+                                    // switched to stereo internally
+  i2s_data_bit_width_t _user_bits;  // caller-requested bits (for expand)
+
   // Callback plumbing (Phase 4, unchanged pattern).
   void (*_rx_cb)();
   void (*_tx_cb)();

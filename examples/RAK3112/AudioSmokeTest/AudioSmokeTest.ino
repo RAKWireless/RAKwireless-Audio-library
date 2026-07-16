@@ -26,7 +26,7 @@
 #include <math.h>
 
 // ---- knobs --------------------------------------------------------------
-#define SAMPLE_RATE     96000   // 8000 / 16000 / 22050 (96000 stretch)
+#define SAMPLE_RATE     8000   // 8000 / 16000 / 22050 (96000 stretch)
 #define AMP_VARIANT     60      // 60 = RAK18060 stereo, 61 = RAK18061 mono
 #define TONE_HZ         1000
 #define TONE_MS         2000
@@ -143,6 +143,24 @@ static void playTone()
   dumpTas2560Status("after-play L", AMP_Left);
 #if AMP_VARIANT == 60
   dumpTas2560Status("after-play R", AMP_Right);
+#endif
+
+  // At 8 kHz our Phase 1 CLK_ERR overrides disable the chip's
+  // auto-mute-on-clock-loss (necessary to stop 128 kHz BCLK
+  // false-triggering the mute during actual playback). Once I²S
+  // stops, the DSP freewheels a stale tone. set_mute() writes
+  // PWR_CTRL_1 = 0x03 which should disable class-D — empirically it
+  // doesn't quiet the amp in the 8 kHz configuration.
+  //
+  // Nuke it: soft-reset each amp before dropping I²S. The next
+  // iteration's begin() re-inits from scratch anyway, so the reset
+  // is free. Same pattern applies to Phase 7's PTT release.
+  
+  // AMP_Left.reset();
+  AMP_Left.set_mute();
+#if AMP_VARIANT == 60
+  // AMP_Right.reset();
+  AMP_Right.set_mute();
 #endif
 
   I2S.end();

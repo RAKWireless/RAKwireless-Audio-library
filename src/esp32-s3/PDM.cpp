@@ -338,6 +338,8 @@ I2SEventClass::I2SEventClass()
     _bclk(-1), _ws(-1), _dout(-1), _din(-1), _mclk(-1),
     _requested_bytes(BUFFER_SIZE), _effective_bytes(0),
     _dma_desc_num(4), _dma_frame_num(240),
+    _widen_slot(false), _mono_to_stereo_expand(false),
+    _user_bits(I2S_DATA_BIT_WIDTH_16BIT),
     _rx_cb(nullptr), _tx_cb(nullptr),
     _rx_sem(nullptr), _tx_sem(nullptr),
     _rx_task(nullptr), _tx_task(nullptr),
@@ -395,7 +397,20 @@ bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
     return false;
   }
 
-  _compute_dma_params_from_bytes(_requested_bytes, ch, bits_cfg);
+  // 8 kHz BCLK-widening: TAS2560's PLL needs BCLK in the ~1 MHz range
+  // to lock. At 8 kHz mono 16-bit our BCLK is only 128 kHz, well
+  // below spec, which is what caused the PLL cycle-slipping we were
+  // masking with CLK_ERR_1 = 0 in Phase 1. Widen to 32-bit stereo
+  // slot at low rates so BCLK = rate * 32 * 2 = 512 kHz. If the
+  // caller asked for mono, transparently duplicate each mono sample
+  // into the R slot inside write().
+  _user_bits = bits_cfg;
+  const bool widen = (rate < 16000);
+  _widen_slot = widen;
+  _mono_to_stereo_expand = widen && (ch == I2S_SLOT_MODE_MONO);
+  const i2s_slot_mode_t effective_ch = widen ? I2S_SLOT_MODE_STEREO : ch;
+
+  _compute_dma_params_from_bytes(_requested_bytes, effective_ch, bits_cfg);
 
   i2s_chan_config_t chan_cfg = {
       .id = I2S_NUM_AUTO,
@@ -414,9 +429,17 @@ bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
     return false;
   }
 
+  i2s_std_slot_config_t slot_cfg =
+      I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bits_cfg, effective_ch);
+  if (widen) {
+    // Force 32-bit slot regardless of data_bit_width so BCLK lands at
+    // fs * 32 * 2 = 512 kHz (in TAS2560 PLL spec) instead of 128 kHz.
+    slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+  }
+
   i2s_std_config_t std_cfg = {
       .clk_cfg  = I2S_STD_CLK_DEFAULT_CONFIG(rate),
-      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(bits_cfg, ch),
+      .slot_cfg = slot_cfg,
       .gpio_cfg = {
           .mclk = (gpio_num_t)_mclk,
           .bclk = (gpio_num_t)_bclk,
@@ -467,11 +490,46 @@ bool I2SEventClass::end()
 size_t I2SEventClass::write(const uint8_t *buffer, size_t size)
 {
   if (_tx_chan == nullptr) return 0;
-  size_t written = 0;
-  esp_err_t err = i2s_channel_write(_tx_chan, buffer, size, &written,
-                                    portMAX_DELAY);
-  if (err != ESP_OK) return 0;
-  return written;
+
+  if (!_mono_to_stereo_expand) {
+    size_t written = 0;
+    esp_err_t err = i2s_channel_write(_tx_chan, buffer, size, &written,
+                                      portMAX_DELAY);
+    if (err != ESP_OK) return 0;
+    return written;
+  }
+
+  // Mono→stereo expansion path (used when the caller asked for mono
+  // at a low rate where we forced 32-bit stereo slots on the wire).
+  // Duplicate each mono sample into both L and R so the amp on either
+  // channel selection picks up real audio, and the caller keeps writing
+  // a mono buffer unchanged.
+  //
+  // Split the write into fixed-size chunks so we don't need a huge
+  // scratch on the stack. The reported byte count is in caller-units
+  // (mono) so it matches the caller's buffer accounting.
+  const size_t bytes_per_sample = (_user_bits == I2S_DATA_BIT_WIDTH_32BIT) ? 4
+                                : (_user_bits == I2S_DATA_BIT_WIDTH_24BIT) ? 3
+                                : 2;
+  uint8_t scratch[512];   // holds up to 256 stereo samples of 16-bit
+  size_t caller_written = 0;
+  while (caller_written < size) {
+    const size_t mono_left  = size - caller_written;
+    const size_t stereo_cap = sizeof(scratch) / 2;   // stereo half of scratch
+    const size_t mono_chunk = (mono_left < stereo_cap) ? mono_left : stereo_cap;
+    // Interleave: [S0 S0 S1 S1 S2 S2 ...] at bytes_per_sample each.
+    for (size_t i = 0; i < mono_chunk; i += bytes_per_sample) {
+      memcpy(scratch + 2 * i,                        buffer + caller_written + i, bytes_per_sample);
+      memcpy(scratch + 2 * i + bytes_per_sample,     buffer + caller_written + i, bytes_per_sample);
+    }
+    size_t chunk_written = 0;
+    esp_err_t err = i2s_channel_write(_tx_chan, scratch, mono_chunk * 2,
+                                      &chunk_written, portMAX_DELAY);
+    if (err != ESP_OK) return caller_written;
+    caller_written += mono_chunk;
+    if (chunk_written < mono_chunk * 2) break;
+  }
+  return caller_written;
 }
 
 size_t I2SEventClass::readBytes(char *buffer, size_t size)

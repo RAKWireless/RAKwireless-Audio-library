@@ -111,6 +111,13 @@ typedef union {
 
 extern cfg_reg registers[205];
 
+// PPC3-generated table for TAS2560 ROM Mode 1 at 8 kHz mono 16-bit.
+// See registers_8khz block in tas2560reg.cpp for the full context
+// (PPC3 assumed BCLK = 1.536 MHz; our runtime overrides PLL_J and
+// CLK_ERR at apply_rate_dependent_init time to compensate).
+extern cfg_reg registers_8khz[];
+extern const int registers_8khz_count;
+
 // Per-rate DSP/biquad coefficient block.
 //
 // Source attribution (see driver_updates_plan.md Phase 1 step 3):
