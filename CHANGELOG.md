@@ -18,12 +18,6 @@ user-facing usage and `phase_status.md` for the change history.
   `write`, `readBytes`, `available`, `end`. Existing sketches that
   use the global `I2S` unchanged; sketches that declared their own
   `I2SClass I2S;` will need to switch to `I2SEventClass`.
-- **`library.properties`** no longer sets `precompiled=true` or
-  `ldflags=-lDSpotterSDK`. No precompiled `.a` shipped for ESP32-S3
-  so this was silently skipping the RAK3112 `.cpp` builds; disabling
-  it lets the RAK3112 changes actually compile. DSPG examples
-  (`VoiceRecognition_DSPG`, `DSPG_PlayBack`) will not link with
-  those disabled — re-enable when shipping DSPG support.
 
 ### Added (RAK3112)
 
@@ -90,6 +84,17 @@ user-facing usage and `phase_status.md` for the change history.
 - **PCM_RATE encoding for 8 kHz corrected** — the value is `0x30`,
   not `0x12` (an earlier draft assumption from before the PPC3
   export).
+
+### Fixed (all cores)
+
+- **Restore `precompiled=true` / `ldflags=-lDSpotterSDK` in
+  `library.properties`.** An earlier 2.0.0 draft removed them, which
+  left the bundled `libDSpotterSDK.a` (`src/esp32`, `src/cortex-m4`,
+  `src/cortex-m0plus`) unlinked, so every CDSpotter voice example
+  failed with `undefined reference to DSpotter_*` on RAK4631,
+  RAK11200 and RAK11310. With arduino-cli 1.5 the RAK3112 sources still
+  compile with the flag set (there is no `src/esp32s3` archive, so
+  arduino-cli only prints a "precompiled library not found" note).
 
 ### Known open
 
