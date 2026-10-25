@@ -17,7 +17,7 @@ I2SEventClass I2S;
 PDMClass::PDMClass()
   : _rx_chan(nullptr),
     _channel_open(false),
-    _requested_bytes(BUFFER_SIZE),
+    _requested_bytes(0),
     _effective_bytes(0),
     _dma_desc_num(4),
     _dma_frame_num(240),
@@ -44,9 +44,18 @@ PDMClass::~PDMClass() {}
 //   dma_desc_num * dma_frame_num * bytes_per_frame ≈ target_bytes.
 // bytes_per_frame = channels * 2 (16-bit PDM only).
 // dma_desc_num fixed at 4. Clamp dma_frame_num to IDF's 8..4092.
+// target_bytes <= 0 (no setBufferSize() call) gives ESP_I2S's default
+// of 6 descriptors x 240 frames, so sketches written for library 1.0.x
+// (which used ESP_I2S) get the same buffering: 90 ms at any rate.
 void PDMClass::_compute_dma_params_from_bytes(int target_bytes, int channels)
 {
   const int bytes_per_frame = channels * 2;
+  if (target_bytes <= 0) {
+    _dma_desc_num  = 6;
+    _dma_frame_num = 240;
+    _effective_bytes = 6 * 240 * bytes_per_frame;
+    return;
+  }
   int desc = 4;
   int frames = target_bytes / (desc * bytes_per_frame);
   if (frames < 8)    frames = 8;
@@ -98,8 +107,12 @@ int PDMClass::begin(int channels, long sampleRate)
   _sample_rate = sampleRate;
   _compute_dma_params_from_bytes(_requested_bytes, channels);
 
+  // Fixed port: only I2S_NUM_0 supports PDM RX on ESP32-S3. With
+  // I2S_NUM_AUTO, an I2S.begin() called first could take port 0 and
+  // leave PDM nothing usable. I2SEventClass is pinned to I2S_NUM_1, so
+  // the two can start in either order.
   i2s_chan_config_t chan_cfg = {
-      .id = I2S_NUM_AUTO,
+      .id = I2S_NUM_0,
       .role = I2S_ROLE_MASTER,
       .dma_desc_num  = (uint32_t)_dma_desc_num,
       .dma_frame_num = (uint32_t)_dma_frame_num,
@@ -110,7 +123,7 @@ int PDMClass::begin(int channels, long sampleRate)
   };
 
   if (i2s_new_channel(&chan_cfg, nullptr, &_rx_chan) != ESP_OK) {
-    Serial.println("PDM: i2s_new_channel failed");
+    Serial.println("PDM: i2s_new_channel failed (I2S_NUM_0 in use?)");
     return 0;
   }
 
@@ -231,7 +244,7 @@ int PDMClass::read(void* buffer, size_t size)
   return (int)to_copy;
 }
 
-// ---- Phase 4 callback plumbing (IRAM ISR path) ----
+// ---- Callback plumbing (IRAM ISR path) ----
 
 bool IRAM_ATTR pdm_isr_on_recv_trampoline(void *ctx);
 static bool IRAM_ATTR pdm_isr_on_recv(i2s_chan_handle_t handle,
@@ -336,7 +349,7 @@ void PDMClass::onReceive(void (*cb)())
 I2SEventClass::I2SEventClass()
   : _tx_chan(nullptr), _rx_chan(nullptr), _channel_open(false),
     _bclk(-1), _ws(-1), _dout(-1), _din(-1), _mclk(-1),
-    _requested_bytes(BUFFER_SIZE), _effective_bytes(0),
+    _requested_bytes(0), _effective_bytes(0),
     _dma_desc_num(4), _dma_frame_num(240),
     _widen_slot(false), _mono_to_stereo_expand(false),
     _user_bits(I2S_DATA_BIT_WIDTH_16BIT),
@@ -364,6 +377,13 @@ void I2SEventClass::_compute_dma_params_from_bytes(int target_bytes,
   int slots = (ch == I2S_SLOT_MODE_STEREO) ? 2 : 1;
   int bytes_per_frame = slots * ((int)bits / 8);
   if (bytes_per_frame < 1) bytes_per_frame = 2;
+  // No setBufferSize(): ESP_I2S's 6 x 240 frames, as in library 1.0.x.
+  if (target_bytes <= 0) {
+    _dma_desc_num  = 6;
+    _dma_frame_num = 240;
+    _effective_bytes = 6 * 240 * bytes_per_frame;
+    return;
+  }
   int desc = 4;
   int frames = target_bytes / (desc * bytes_per_frame);
   if (frames < 8)    frames = 8;
@@ -397,13 +417,12 @@ bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
     return false;
   }
 
-  // 8 kHz BCLK-widening: TAS2560's PLL needs BCLK in the ~1 MHz range
-  // to lock. At 8 kHz mono 16-bit our BCLK is only 128 kHz, well
-  // below spec, which is what caused the PLL cycle-slipping we were
-  // masking with CLK_ERR_1 = 0 in Phase 1. Widen to 32-bit stereo
-  // slot at low rates so BCLK = rate * 32 * 2 = 512 kHz. If the
-  // caller asked for mono, transparently duplicate each mono sample
-  // into the R slot inside write().
+  // 8 kHz BCLK-widening: TAS2560's PLL needs at least 512 kHz BCLK in
+  // integer mode. STD mode always clocks two slots, so 8 kHz with
+  // 16-bit slots gives only 256 kHz and the PLL cycle-slips. Widen to
+  // 32-bit stereo slots at low rates so BCLK = rate * 32 * 2 = 512 kHz.
+  // If the caller asked for mono, write() duplicates each mono sample
+  // into the R slot.
   _user_bits = bits_cfg;
   const bool widen = (rate < 16000);
   _widen_slot = widen;
@@ -412,8 +431,10 @@ bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
 
   _compute_dma_params_from_bytes(_requested_bytes, effective_ch, bits_cfg);
 
+  // Fixed port: I2S_NUM_1, leaving I2S_NUM_0 (the only PDM-RX-capable
+  // port) for PDMClass regardless of which begin() runs first.
   i2s_chan_config_t chan_cfg = {
-      .id = I2S_NUM_AUTO,
+      .id = I2S_NUM_1,
       .role = I2S_ROLE_MASTER,
       .dma_desc_num  = (uint32_t)_dma_desc_num,
       .dma_frame_num = (uint32_t)_dma_frame_num,
@@ -425,7 +446,7 @@ bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
 
   // Create BOTH tx and rx to mirror ESP_I2S's STD-mode behavior.
   if (i2s_new_channel(&chan_cfg, &_tx_chan, &_rx_chan) != ESP_OK) {
-    Serial.println("I2S STD: i2s_new_channel failed");
+    Serial.println("I2S STD: i2s_new_channel failed (I2S_NUM_1 in use?)");
     return false;
   }
 
@@ -435,6 +456,11 @@ bool I2SEventClass::begin(i2s_mode_t mode, uint32_t rate,
     // Force 32-bit slot regardless of data_bit_width so BCLK lands at
     // fs * 32 * 2 = 512 kHz (in TAS2560 PLL spec) instead of 128 kHz.
     slot_cfg.slot_bit_width = I2S_SLOT_BIT_WIDTH_32BIT;
+    // The Philips default sets ws_width (BCLK ticks WS is high) to the
+    // data width, 16. With 32-bit slots WS must stay high for the whole
+    // right slot (50 % duty); at 16 the right-channel frame was
+    // malformed and a stereo stream reached only the left amp.
+    slot_cfg.ws_width = 32;
   }
 
   i2s_std_config_t std_cfg = {
@@ -548,7 +574,7 @@ int I2SEventClass::available()
   return _effective_bytes;  // rough hint; matches ESP_I2S semantics
 }
 
-// ---- Phase 4 callback plumbing (identical pattern to PDM) ----
+// ---- Callback plumbing (identical pattern to PDM) ----
 
 bool IRAM_ATTR i2sev_isr_on_recv_trampoline(void *ctx);
 bool IRAM_ATTR i2sev_isr_on_sent_trampoline(void *ctx);

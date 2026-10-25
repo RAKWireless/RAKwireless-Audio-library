@@ -19,6 +19,7 @@
 #define TAS25X_EDGE_ISNS_BOOST 0x09  //Edge Rate, Isense Scale, Boost limit EDGE_ISNS_BOOST (book=0x00 page=0x00 address=0x09) [reset=83h]
 #define TAS25X_PLL_CLKIN       0x0F  //PLL Clock Input Control PLL_CLKIN (book=0x00 page=0x00 address=0x0F)[reset=41h]
 #define TAS25X_PLL_JVAL        0x10  //PLL J Multiplier Control PLL_JVAL (book=0x00 page=0x00 address=0x10) [reset=4h]
+#define TAS25X_PLL_LOWF        0x80  //PLL_JVAL bit 7 per datasheet Table 4 (input < 1 MHz). Not set: hiss at 16 kHz on RAK18060
 #define TAS25X_PLL_DVAL_1      0x11  //PLL Fractional Multiplier D Val MSB PLL_DVAL_1 (book=0x00 page=0x00 address=0x11) [reset=0h]
 #define TAS25X_PLL_DVAL_2      0x12  //PLL Fractional Multiplier D Val LSB PLL_DVAL_2 (book=0x00 page=0x00 address=0x12) [reset=0h]
 #define TAS25X_ASI_FORMAT      0x14  //ASI Mode Control ASI_FORMAT (book=0x00 page=0x00 address=0x14) [reset=2h]
@@ -26,6 +27,7 @@
 #define TAS25X_ASI_OFFSET_1    0x16  //ASI Offset ASI_OFFSET_1 (book=0x00 page=0x00 address=0x16) [reset=0h]
 #define TAS25X_ASI_OFFSET_2    0x17  //ASI Offset Second Slot ASI_OFFSET_2 (book=0x00 page=0x00 address=0x17) [reset=0h]
 #define TAS25X_ASI_CFG_1       0x18  //ASI Configuration ASI_CFG_1 (book=0x00 page=0x00 address=0x18) [reset=0h]
+#define ASI_CFG_1_WCLKE        0x08  //ASI_CFG_1 bit 3: WCLK inverted w.r.t. the timing protocol (datasheet Table 76)
 #define TAS25X_ASI_DIV_SRC     0x19  //ASI BDIV Clock Input ASI_DIV_SRC (book=0x00 page=0x00 address=0x19) [reset=0h]
 #define TAS25X_ASI_BDIV        0x1A  //ASI BDIV Configuration ASI_BDIV (book=0x00 page=0x00 address=0x1A) [reset=1h]
 #define TAS25X_ASI_WDIV        0x1B  //ASI WDIV Configuration ASI_WDIV (book=0x00 page=0x00 address=0x1B) [reset=40h]
@@ -118,9 +120,15 @@ extern cfg_reg registers[205];
 extern cfg_reg registers_8khz[];
 extern const int registers_8khz_count;
 
+// TAS2560 in Mode 2 96k (datasheet SLASE86E section 9.5.5.3). No DSP
+// patch — see the registers_96khz block in tas2560reg.cpp for the
+// rationale.
+extern cfg_reg registers_96khz[];
+extern const int registers_96khz_count;
+
 // Per-rate DSP/biquad coefficient block.
 //
-// Source attribution (see driver_updates_plan.md Phase 1 step 3):
+// Source attribution:
 // The default `registers[]` table is inherited verbatim from the
 // RAKwireless-Audio-library upstream commit
 // 8099d9b454e94bb2f582ae5818798875589367d0. The coefficient pages
