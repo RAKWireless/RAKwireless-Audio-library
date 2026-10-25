@@ -14,13 +14,18 @@
 #include "audio.h"
 #include <math.h>
 
-// Phase 2 full-duplex smoke test: set FULL_DUPLEX_TEST to 1 to bring
-// up the RAK18060/18061 amplifier alongside the PDM mic and stream a
-// 1 kHz tone out the speaker while logging mic samples. Verifies that
-// the dual-port driver actually runs PDM and STD I2S concurrently —
-// before Phase 2 this would have caused the second `begin()` to tear
-// down the first peripheral.
-#define FULL_DUPLEX_TEST     1
+// Full-duplex option: set FULL_DUPLEX_TEST to 1 to bring up the
+// RAK18060/18061 amplifier alongside the PDM mic and play a 1 kHz tone
+// on the speaker while the mic samples are printed. Shows the PDM mic
+// and the I2S speaker running at the same time.
+//
+// Sample rate: 8 and 16 kHz work in both modes. At 48 kHz and above
+// with FULL_DUPLEX_TEST enabled the speaker plays broken-up noise
+// instead of a clean tone: printing every mic sample over Serial
+// (48 000+ lines per second) takes far longer than one tone block
+// lasts, so the speaker runs out of data. The mic data is fine; the
+// limit is this sketch's printing, not the driver.
+#define FULL_DUPLEX_TEST     0
 #define AMP_LEFT_ADDRESS     0x4c
 #define AMP_RIGHT_ADDRESS    0x4f
 #define TONE_HZ              1000
@@ -30,7 +35,7 @@ TPT29555   Expander2(0x25);
 
 int channels = 1; //1 mono  2 stereo
 // default PCM output frequency
-static const int frequency = 48000;
+static const int frequency = 16000;
 
 #if FULL_DUPLEX_TEST
 TAS2560 AMP_Left;
@@ -87,11 +92,8 @@ void setup() {
   }
 
 #if FULL_DUPLEX_TEST
-  // Bring the speaker path up *after* PDM. Pre-Phase 2 this call
-  // would have re-bound the single shared I2S peripheral to STD mode
-  // and made PDM.read() return constant 0xFFFF. With the dual-port
-  // fix it now binds to I2S_NUM_1 and leaves PDM running on
-  // I2S_NUM_0.
+  // Speaker path. I2S runs on I2S_NUM_1 and PDM on I2S_NUM_0, so the
+  // two run concurrently and can be started in either order.
   if (!AMP_Left.begin(AMP_LEFT_ADDRESS, (uint32_t)frequency)) {
     Serial.println("AMP_Left.begin failed");
   } else {

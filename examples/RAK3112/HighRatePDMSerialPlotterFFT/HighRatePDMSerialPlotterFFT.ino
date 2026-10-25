@@ -6,7 +6,8 @@
    Arduino IDE can be used to plot the audio data (Tools -> Serial Plotter)
    @note  
     1) To use the ploter function Arduino IDE version 1.x is needed (version 2.x plotter does not work with this code)
-    2) This example need use the microphones that can supports higher sampling rate.
+    2) This example needs to use microphones that can supports higher sampling rate.
+    3) When using the RAK18032 a frequency of 72000 can be used below (rather than the default of 48000)
    @version 0.1
    @date 2025-10-6
    @copyright Copyright (c) 2025 

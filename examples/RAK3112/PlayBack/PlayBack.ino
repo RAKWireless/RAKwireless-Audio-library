@@ -45,8 +45,8 @@ void setup() {
   }
   
   Serial.println("=====================================");
-  // Pass the I2S sample rate through to the TAS2560 so PCM_RATE /
-  // CLK_ERR_2 are programmed for the rate this sketch actually runs.
+  // Pass the I2S sample rate through to the TAS2560 so its register
+  // table, PCM_RATE and PLL are set for the rate this sketch runs at.
   if(!AMP_Left.begin(AMP_LEFT_ADDRESS, (uint32_t)frequency))
   {
     Serial.printf("TAS2560 left init failed\r\n");

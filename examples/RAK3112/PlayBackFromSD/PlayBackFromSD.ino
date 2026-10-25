@@ -111,23 +111,56 @@ void loop()
   while (1); //If you need to repeat playback, you can comment out this line.
   set_AMP_mute();
 }
+// Block size for SD reads / I2S writes. A multiple of 4 so every block
+// holds whole 16-bit sample pairs.
+#define PLAY_BLOCK_BYTES 4096
+static int16_t play_block[PLAY_BLOCK_BYTES / 2];
+
 void play_task(void)
 {
-  int16_t sample[2] = {0};
   SD_CS_low();  //enable the SPI
   delay(10);
   audiofile.seek(f_startPos);
   f_readPos = f_startPos;
   Serial.println("start play");
+  const uint32_t t_start = millis();
+  // Read and write in blocks. The original loop read 4 bytes and made one
+  // I2S.write() per sample frame; at 96 kHz that's ~10 us per iteration,
+  // which it couldn't sustain (measured 1.65x real time), so the DMA ran
+  // dry and playback stretched.
   while (f_readPos < f_endPos)
   {
-    int bytes_read = audiofile.read((uint8_t*)&sample, sizeof(sample));
-    uint32_t s32 = rak_audio.Gain(sample); // vosample2lume;
-    I2S.write((const uint8_t *)&s32, sizeof(uint32_t));
-    f_readPos = f_readPos + bytes_read;
+    uint32_t want = f_endPos - f_readPos;
+    if (want > PLAY_BLOCK_BYTES) want = PLAY_BLOCK_BYTES;
+    int bytes_read = audiofile.read((uint8_t *)play_block, want);
+    if (bytes_read <= 0) break;
+    bytes_read &= ~3;   // whole sample pairs only
+    // Gain() takes an [L, R] pair and returns (L << 16) | R. Unpack in
+    // L, R order: the original wrote the returned word as-is, which on
+    // little-endian puts R first, swapping channels (and pair-swapping
+    // sample order for mono files).
+    for (int i = 0; i < bytes_read / 2; i += 2) {
+      uint32_t g = rak_audio.Gain(&play_block[i]);
+      play_block[i]     = (int16_t)(g >> 16);
+      play_block[i + 1] = (int16_t)(g & 0xFFFF);
+    }
+    I2S.write((const uint8_t *)play_block, bytes_read);
+    f_readPos += bytes_read;
   }
+  // Throughput check: a ratio near 1.00 means the loop keeps up with the
+  // sample rate. Well above 1.0 means I2S underran (the driver sends
+  // silence) and playback sounded slow/stretched.
+  const uint32_t t_play = millis() - t_start;
+  Serial.printf("played in %lu ms, file is %.0f ms of audio (ratio %.2f)\r\n",
+                (unsigned long)t_play, g_wav_head.playTime * 1000.0f,
+                g_wav_head.playTime > 0 ? t_play / (g_wav_head.playTime * 1000.0f) : 0.0f);
   delay(200);
   SD_CS_high(); //disable the SPI CS
+  // Mute before stopping I2S. Ending I2S with the amps still powered
+  // leaves the class-D idling with no clock or data, which is audible
+  // as hiss. loop() never reaches its own set_AMP_mute() (it parks in
+  // while(1) first), so do it here.
+  set_AMP_mute();
   I2S.end();
   audiofile.close();
   Serial.println("stop play");
@@ -147,6 +180,7 @@ void AMP_init(void)
     delay(500);
   }
   AMP_Right.set_pcm_channel(RightMode);
+
 }
 void set_AMP_mute()
 {
@@ -426,7 +460,7 @@ bool connectFS(fs::FS &fs, const char* path)
   if (strlen(path) > 255) return false;
   char audioName[256];
   memcpy(audioName, path, strlen(path) + 1);
-  //  Serial.printf("path:%s\r\n", path);
+  Serial.printf("path:%s\r\n", path);
   if (audioName[0] != '/')
   {
     for (int i = 255; i > 0; i--)
@@ -481,20 +515,46 @@ void play_wav(const char* file)
     {
       get_flie_info();
 
-      // Program PCM_RATE / CLK_ERR_2 on both amps for the rate the WAV
-      // header declares, so non-default rates (e.g. 8 kHz voice) play.
-      if (!AMP_Left.set_sample_rate(g_wav_head.sampleRate))
+      // Fully re-init both amps for the WAV's declared rate. TAS2560
+      // has 4 native modes (8 / 16 / 48 / 96 kHz per datasheet); the
+      // driver maps sibling rates (12 / 24 / 32 / 44.1 / 88.2) to
+      // the closest native mode.
+      //
+      // Why begin() and not set_sample_rate() alone: the chip's DSP
+      // clock chain (PLL, decimation, interpolation, CLK_ERR
+      // thresholds) is programmed by the register table sent inside
+      // begin() and is rate-specific. Runtime PCM_RATE-only changes
+      // update the mode advertisement but leave the actual clock
+      // chain set for whatever rate begin() was called with — so a
+      // 96 kHz WAV played after a 16-kHz-default boot would play at
+      // half speed. Doing a full begin() here rewrites the whole
+      // clock/DSP setup for the new rate.
+      if (!AMP_Left.begin(AMP_LEFT_ADDRESS,
+                          (uint32_t)g_wav_head.sampleRate) ||
+          !AMP_Right.begin(AMP_RIGTT_ADDRESS,
+                           (uint32_t)g_wav_head.sampleRate))
       {
-        Serial.printf("TAS2560 left: unsupported sample rate %u\r\n",
+        Serial.printf("TAS2560: sample rate %u not supported; skipping\r\n",
                       (unsigned)g_wav_head.sampleRate);
+        audiofile.close();
+        SD_CS_high();
+        return;
       }
-      if (!AMP_Right.set_sample_rate(g_wav_head.sampleRate))
-      {
-        Serial.printf("TAS2560 right: unsupported sample rate %u\r\n",
-                      (unsigned)g_wav_head.sampleRate);
-      }
+      // Re-apply channel selection + gain (begin() reloads the full
+      // register table and their defaults may not match what the
+      // sketch wants for playback).
+      // Stereo files: each amp takes its own slot. Mono files: both amps
+      // take the left slot (the ESP32-S3 sends the mono sample in both).
+      AMP_Left.set_pcm_channel(LeftMode);
+      AMP_Right.set_pcm_channel(g_wav_head.channels == 2 ? RightMode : LeftMode);
 
       I2S.setPins(WB_IO6,WB_IO5,SDA1,SCL1);
+      // ~50 ms of DMA buffering. The library default (BUFFER_SIZE) is
+      // only ~5 ms at 96 kHz stereo, less than one SD block read, so
+      // playback underran even with block reads. setBufferSize() must
+      // come before begin(); I2S.end() at the end of play_task() makes
+      // that true on every call.
+      I2S.setBufferSize((int)(g_wav_head.sampleRate * 4 / 20));
       if (!I2S.begin(I2S_MODE_STD, g_wav_head.sampleRate, (i2s_data_bit_width_t)g_wav_head.singleBitsPerSample, (i2s_slot_mode_t)g_wav_head.channels))
       {
         Serial.println("Failed to initialize I2S!");

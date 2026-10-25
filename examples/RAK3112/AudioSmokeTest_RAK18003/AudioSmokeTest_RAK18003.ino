@@ -1,23 +1,21 @@
 /**
- * @file AudioSmokeTest.ino
- * @brief Cross-phase regression smoke test for the RAK3112 audio library.
+ * @file AudioSmokeTest_RAK18003.ino
+ * @brief Smoke test for the RAK3112 audio path: speaker, then microphone.
  *
- * Runs the same sequence after every phase of `driver_updates_plan.md`:
+ * Repeats:
  *   1. Play a 1 kHz sine tone for TONE_MS at SAMPLE_RATE through the
- *      TAS2560 amplifier on I2S STD.
- *   2. Tear down I2S, bring up the PDM mic, and record REC_MS of audio.
- *   3. Print min / max / avg / RMS of the recorded buffer.
+ *      TAS2560 amplifier(s) on I2S.
+ *   2. Mute the amps, stop I2S, start the PDM mic and record REC_MS.
+ *   3. Print min / max / avg / RMS of the recording.
  *
- * Until Phase 2 lands, PDM and I2S share one peripheral, so playback
- * and capture are sequenced — not simultaneous. Verify the playback
- * leg with a scope or AUX tap on the amp output (the recorded mic
- * data alone cannot prove the speaker fired). After Phase 2 a true
- * acoustic-loopback variant can be added.
+ * Listen for a clean tone on the speaker(s) and silence while the mic
+ * records. The two legs run one after the other; for mic and speaker
+ * at the same time see PDMSerialPlotter_RAK18003 (FULL_DUPLEX_TEST).
  *
  * Hardware: RAK3112 core + RAK19007 base + RAK18003 interposer +
  *           RAK18030 PDM mic + RAK18060 (stereo) or RAK18061 (mono) amp.
  *
- * Configure SAMPLE_RATE to the rate under test (8000 / 16000 / 22050).
+ * Set SAMPLE_RATE to the rate under test (8000 / 16000 / 22050 / 48000).
  * Set AMP_VARIANT to 60 for RAK18060 (stereo, two TAS2560s) or 61 for
  * RAK18061 (mono, one TAS2560).
  */
@@ -26,7 +24,7 @@
 #include <math.h>
 
 // ---- knobs --------------------------------------------------------------
-#define SAMPLE_RATE     8000   // 8000 / 16000 / 22050 (96000 stretch)
+#define SAMPLE_RATE     16000   // 8000 / 16000 / 22050 / 48000
 #define AMP_VARIANT     60      // 60 = RAK18060 stereo, 61 = RAK18061 mono
 #define TONE_HZ         1000
 #define TONE_MS         2000
@@ -91,7 +89,6 @@ static void rak18003Init()
 
 static void dumpTas2560Status(const char *label, TAS2560 &amp)
 {
-  // Best-effort observability before Phase 1's debug helper lands.
   Serial.printf("[%s] PWR=0x%02X INT1=0x%02X INT2=0x%02X\r\n",
                 label,
                 amp.get_power_status(),
@@ -103,9 +100,9 @@ static void playTone()
 {
   Serial.println("--- speaker leg ---");
 
-  // Pass SAMPLE_RATE so the Phase 1 rate-aware init runs (PCM_RATE
-  // 0x36 and CLK_ERR_2 0x22 get reprogrammed after the static table).
-  // Without this the chip boots for 16/24 kHz and self-mutes at 8 kHz.
+  // Pass SAMPLE_RATE so the amp loads the register table, PCM_RATE and
+  // PLL settings for that rate. Without it the chip is set up for
+  // 16 kHz and plays nothing at 8 kHz.
   if (!AMP_Left.begin(AMP_LEFT_ADDRESS, (uint32_t)SAMPLE_RATE)) {
     Serial.println("AMP_Left.begin failed");
     return;
@@ -145,21 +142,11 @@ static void playTone()
   dumpTas2560Status("after-play R", AMP_Right);
 #endif
 
-  // At 8 kHz our Phase 1 CLK_ERR overrides disable the chip's
-  // auto-mute-on-clock-loss (necessary to stop 128 kHz BCLK
-  // false-triggering the mute during actual playback). Once I²S
-  // stops, the DSP freewheels a stale tone. set_mute() writes
-  // PWR_CTRL_1 = 0x03 which should disable class-D — empirically it
-  // doesn't quiet the amp in the 8 kHz configuration.
-  //
-  // Nuke it: soft-reset each amp before dropping I²S. The next
-  // iteration's begin() re-inits from scratch anyway, so the reset
-  // is free. Same pattern applies to Phase 7's PTT release.
-  
-  // AMP_Left.reset();
+  // Mute the amps BEFORE stopping I²S. If the clocks stop with the
+  // amp powered, the class-D idles and hisses or freewheels a stale
+  // tone. set_mute() writes PWR_CTRL_1 = 0x03.
   AMP_Left.set_mute();
 #if AMP_VARIANT == 60
-  // AMP_Right.reset();
   AMP_Right.set_mute();
 #endif
 
@@ -180,12 +167,11 @@ static void recordMic()
   const uint32_t deadline = millis() + REC_MS + 500;
 
   while (written < wantBytes && (int32_t)(deadline - millis()) > 0) {
-    // PDM.read currently writes a whole DMA block regardless of the
-    // size argument; pass a large request and clamp to remaining space.
+    // PDM.read returns what's ready, up to the requested size, and 0
+    // if nothing is ready yet.
     int chunk = wantBytes - written;
     int got = PDM.read(((uint8_t *)recBuf) + written, chunk);
     if (got <= 0) { delay(1); continue; }
-    if (got > chunk) got = chunk;  // belt-and-braces until read-size bug fixed
     written += got;
   }
 

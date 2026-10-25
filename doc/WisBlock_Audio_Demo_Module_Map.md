@@ -38,8 +38,6 @@
 | `PlayBack48KHz.ino` | 18060 |
 | `PlayBackFromSD.ino` | 18003,18060 |
 | `RAK18003_example.ino` | 18003 |
-| `RAK1806X_test.ino` | 18060 |
-| `RAK1806X_test_RAK18003.ino` | 18003,18060 |
 | `RecordToSD.ino` | 18003,18030 |
 
 ## RAK4631
