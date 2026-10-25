@@ -156,6 +156,9 @@ void play_sound()
   int16_t *p_word = NULL;
   I2S.setSampleBit(16);
   I2S.begin(i2s_channels, 44100);
+  // Stereo: one channel per amp. Mono: both amps play (L+R)/2.
+  AMP_Left.set_pcm_channel(i2s_channels == 2 ? LeftMode : LeftRightMode);
+  AMP_Right.set_pcm_channel(i2s_channels == 2 ? RightMode : LeftRightMode);
   uint32_t sound_size = sizeof(sound_buff) / 2;
   set_AMP_unmute();
   Serial.println("start play");

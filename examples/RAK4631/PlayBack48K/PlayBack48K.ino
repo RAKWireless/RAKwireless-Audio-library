@@ -65,7 +65,9 @@ void setup()
     delay(500);
   }
 
-  AMP_Left.set_pcm_channel(LeftMode);
+  // The I2S stream is mono (one channel), so both amps play the mix of
+  // the two slots, (L+R)/2, as library 1.0.x always did.
+  AMP_Left.set_pcm_channel(LeftRightMode);
 
   if (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
   {
@@ -73,7 +75,7 @@ void setup()
     delay(500);
   }
 
-  AMP_Right.set_pcm_channel(RightMode);
+  AMP_Right.set_pcm_channel(LeftRightMode);
 
   rak_audio.setVolume(6);  //The volume level can be set to 0-21
 

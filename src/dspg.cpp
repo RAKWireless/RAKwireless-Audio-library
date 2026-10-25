@@ -6,8 +6,8 @@
   I2S RP2040_I2S(OUTPUT); 
 #endif			
 
-TPT29555   tpt29555_1(0x23);    //interrupt pin in this chip
-TPT29555   tpt29555_2(0x25);
+static TPT29555   tpt29555_1(0x23);    //interrupt pin in this chip
+static TPT29555   tpt29555_2(0x25);
 
 RAK_SPI  SPI_USER;
 
