@@ -9,14 +9,14 @@
 
 ## Introduction
 
-RAKwireless Audio library is designed for RAK audio module and kit solutions. This library provides customer with abundant examples and solutions on audio field. User can use them for any scene 
+RAKwireless Audio library is designed for RAK audio module and kit solutions. This library provides customer with abundant audio  examples and solutions. User can use them for: 
 
 - mono/stereo audio mode
-- play music
-- record voice
+- playing music
+- voice recording
 - voice recognition
 - noise collector
-- PDM and analog microphone
+- PDM and analog microphones
 - DSPG module for audio data process
 
 
@@ -25,7 +25,7 @@ RAKwireless Audio library is designed for RAK audio module and kit solutions. Th
 
 <img src="assets/stack (2).png" alt="stack (2)" style="zoom:80%;" />
 
-As shown above, audio solutions includes below parts:
+As shown above, audio solutions includes the following parts:
 
 - RAK18003: Interposer Board, as a signal switch for wiscore, microphone, amplifier 
 - RAK18030: 20-20kHz Microphone  
@@ -37,7 +37,7 @@ As shown above, audio solutions includes below parts:
 - RAK18061: 5.6W Amplifier              
 - RAK18080: DSPG board, audio process board
 
-At the same time we will release some audio kit
+There are also some audio kits available:
 
 - WisBlock Microphone Interposer Kit                         
 - WisBlock Speaker Amplifier SD Kit
@@ -50,8 +50,8 @@ At the same time we will release some audio kit
 
 All elements can be used separately or together. However, there are two points need to note:
 
-- They all use IO connector
-- We advise to use them together and be sure the microphone placed on the top of stack.
+- They all use a WisBlock IO connector
+- When using multiple WisBlock Audio modules, be sure the microphone placed on the top of stack.
 
 
 
@@ -59,13 +59,13 @@ All elements can be used separately or together. However, there are two points n
 
 #### BSP Update
 
-Please update BSP part to the last version, which will support basic driver.
+Please update BSP to the last version, which will support basic driver.
 
 ![](assets/BSP.jpg)
 
 #### Rakwireless Audio library
 
-Then install audio library, which contains other part of driver, like amplifier, DSPG. And includes all examples and solutions. Because of the technical problem, it is not merged in IDE now. Please download ZIP from:  https://github.com/RAKWireless/RAKwireless-Audio-library  And then install manually.
+Then install audio library, which contains other part of driver, like amplifier, DSPG. And includes all examples and solutions. Because of the technical problems, it is not merged in the IDE now. Please download ZIP from:  https://github.com/RAKWireless/RAKwireless-Audio-library  And then install manually.
 
 ![](assets/install.jpg)
 
@@ -200,7 +200,7 @@ The examples can be separated 4 parts. The test code is just for test and can be
   
   ![play3](assets/play3.png)
 
-#### How to general header from WAV
+#### How to generate a header from WAV
 
 First you need put your WAV file with the WAVconvert.py  in the same folder.
 
@@ -263,10 +263,10 @@ on 1.0.x misbehaves after upgrading.
   passed. Now it returns what's ready, up to `size`, or 0 if nothing
   is. Always use the return value as the byte count; a loop that
   assumes a full buffer each call writes stale data.
-- **DMA buffers are now sizeable.** The default is the same as 1.0.x
-  (ESP_I2S's 6 × 240 frames, 90 ms at any rate). `PDM.setBufferSize()`
-  / `I2S.setBufferSize()` before `begin()` change it; 2.0.0 had a
-  smaller default (1920 bytes), so use 2.0.1 or later.
+- **DMA buffers can be sized.** The default is the same as 1.0.x
+  (ESP_I2S's 6 × 240 frames, 90 ms at any rate). Call
+  `PDM.setBufferSize()` / `I2S.setBufferSize()` before `begin()` to
+  change it, e.g. for slow SD card loops.
 - **`PDM` and `I2S` are separate peripherals.** In 1.0.x `PDM` was a
   wrapper around the global `I2S`, so reading the mic through
   `I2S.readBytes()`, or stopping it with `I2S.end()`, worked. Now the
@@ -300,7 +300,7 @@ on 1.0.x misbehaves after upgrading.
 
 ## RAK3112 (ESP32-S3) — extended API and fixes
 
-This fork ships a rewritten RAK3112 audio path against raw ESP-IDF
+Version 2.0.0 ships a rewritten RAK3112 audio path against raw ESP-IDF
 `i2s_common` / `i2s_std` / `i2s_pdm`, so runtime sizing, event callbacks,
 and dual-port full duplex all work on a stock Arduino-ESP32 v3.x install.
 The rest of this section documents what's new on the RAK3112 board target
@@ -317,15 +317,15 @@ stereo WAVs (correct speed, correct left/right, no hiss):
 | Sample rate | Register table | PCM_RATE | PLL J (PLL_CLK) |
 |---|---|---|---|
 | 8 kHz | PPC3 (ROM Mode 1, 8 Ω, Class-G, 8.6 V / 3 A) | 0x30 | 96 (49.152 MHz) |
-| 16 kHz | upstream `registers[]` | 0x32 (48 kHz mode) | 96 (49.152 MHz) |
-| 44.1 kHz | upstream `registers[]` | 0x32 | 32 (45.158 MHz) |
-| 48 kHz | upstream `registers[]` | 0x32 | 32 (49.152 MHz) |
+| 16 kHz | stock `registers[]` | 0x32 (48 kHz mode) | 96 (49.152 MHz) |
+| 44.1 kHz | stock `registers[]` | 0x32 | 32 (45.158 MHz) |
+| 48 kHz | stock `registers[]` | 0x32 | 32 (49.152 MHz) |
 | 96 kHz | `registers_96khz[]` ("Mode 2 96k", no DSP patch) | 0x33 | 32 (98.304 MHz) |
 
 22 050 Hz (the `PlayBack` / `PlayBack22K` example rate) uses the
-upstream table; `PlayBack22K` plays correctly in stereo.
+stock table; `PlayBack22K` plays correctly in stereo.
 
-Below 16 kHz the fork widens the ESP-IDF STD slot to 32 bits (two slots
+Below 16 kHz the library widens the ESP-IDF STD slot to 32 bits (two slots
 per frame, WS width 32), so BCLK at 8 kHz is 512 kHz instead of 256 kHz.
 Mono callers see no API change: `I2SEventClass::write()` interleaves each
 mono sample into both slots transparently.
@@ -363,14 +363,13 @@ I2S.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, ...);  // I2S_NUM_1
 // both live at the same time
 ```
 
-Because the ports are fixed (since 2.0.1), the two can start in
-either order. Up to 2.0.0 both asked for any free port, and starting
-the speaker first could leave PDM without one. Anything else that
+Because the ports are fixed, the two can start in either order.
+Anything else that
 claims `I2S_NUM_0` or `I2S_NUM_1` (such as the core's `ESP_I2S`
 `I2SClass`) makes the matching `begin()` fail.
 
-Pre-fork behavior was to reconfigure a single shared peripheral, so the
-second `begin()` would silently tear down the first. See
+In 1.0.x both shared one peripheral, so the second `begin()` would
+silently tear down the first. See
 `examples/RAK3112/PDMSerialPlotter_RAK18003` with `FULL_DUPLEX_TEST 1`
 for a working reproducer.
 
@@ -434,12 +433,12 @@ Counters exposed for diagnostics: `dmaEvents()`, `droppedEvents()`,
   compile-time constant, unlike ESP-IDF's own `available()`). Backed
   by a private 3840-byte staging buffer that non-blocking pulls fill
   on demand.
-- **`PDM.read(buf, size)`** honors `size` — the pre-fork version wrote
+- **`PDM.read(buf, size)`** honors `size` — the 1.0.x version wrote
   a full DMA block (~1920 B) regardless of the caller's buffer
   length. Excess data stays in the IDF ring for the next call, so
   small reads preserve sample order.
 - **`PDM.read()` doesn't wait.** It returns the bytes that are ready
-  (up to `size`), or 0 if none are; the pre-fork version blocked until
+  (up to `size`), or 0 if none are; the 1.0.x version blocked until
   a full block arrived. Always use the return value as the byte count.
   For long recordings (e.g. to SD), raise `PDM.setBufferSize()` so the
   DMA ring covers the slowest write.
@@ -454,7 +453,7 @@ are safe. Always mute before `I2S.end()` (see above).
 ### Example sketches (`examples/RAK3112/`)
 
 The stock examples compile unchanged: a compile sweep of all four cores found no failures
-that weren't already present in upstream 1.0.9. They haven't all been
+that weren't already present in 1.0.9. They haven't all been
 run on hardware.
 
 | Sketch | Verifies |

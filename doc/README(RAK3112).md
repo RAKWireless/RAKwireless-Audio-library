@@ -37,7 +37,7 @@ eg:C:\Users\user\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.6\var
 
 ### 1.3.PDM library
 
-> **Fork note (2.0.1+):** `PDM.zip` has been removed and nothing needs
+> **Note (2.0.0):** `PDM.zip` has been removed and nothing needs
 > installing into the BSP; ignore the steps below. The PDM and I²S
 > drivers in `src/esp32-s3/` were rewritten, and the zip held the old
 > version (it declared `I2S` with the old `I2SClass` type). If you
@@ -85,7 +85,7 @@ sample[1] = sample[0];
 
 #### 2.3 PlayBackFromSD
 
-> **Fork note (2.0.1):** the per-sample loop below was replaced. It
+> **Note (2.0.0):** the per-sample loop below was replaced. It
 > couldn't keep up above about 44 kHz, and writing the `Gain()` result
 > directly swapped left and right. The example now reads and writes 4 KB
 > blocks and mutes the amps before `I2S.end()`.

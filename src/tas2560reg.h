@@ -130,9 +130,9 @@ extern const int registers_96khz_count;
 //
 // Source attribution:
 // The default `registers[]` table is inherited verbatim from the
-// RAKwireless-Audio-library upstream commit
+// RAKwireless-Audio-library commit
 // 8099d9b454e94bb2f582ae5818798875589367d0. The coefficient pages
-// (book 0x00 pages 0x32 / 0x33 / 0x34) carry no upstream attribution
+// (book 0x00 pages 0x32 / 0x33 / 0x34) carry no attribution
 // to a TI PPC3 export, datasheet table, or measured tuning. Until a
 // sourced per-rate table is supplied, all rates fall back to this
 // inherited block.

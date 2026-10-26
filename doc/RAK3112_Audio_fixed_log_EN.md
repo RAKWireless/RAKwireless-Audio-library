@@ -36,7 +36,7 @@ Add the following macro to your RAK3112 variant header (BSP path depends on your
 
 ### 2.2 `audio.h`: RAK3112 definitions
 
-> **Fork note (2.0.0+):** the `Stereo` macro below was removed from the
+> **Note (2.0.0):** the `Stereo` macro below was removed from the
 > RAK3112 branch (it collided with user identifiers). Use
 > `I2S_SLOT_MODE_STEREO`.
 

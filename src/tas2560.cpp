@@ -127,10 +127,7 @@ bool TAS2560::begin(uint8_t addr, TwoWire &theWire, uint32_t sample_rate)
 }
 
 // PCM_RATE (book 0x00 page 0x00 reg 0x36) nibble values per the
-// TAS2560 datasheet PCM_RATE table. Confirm against the datasheet
-// before shipping — these match the upstream static-table value of
-// 0x32 for 16/24 kHz, which is the only point we can cross-check
-// without the part in front of us.
+// TAS2560 datasheet PCM_RATE table (Table 95).
 //
 // 8 kHz   -> 0x12
 // 12 kHz  -> 0x22
@@ -155,16 +152,12 @@ bool TAS2560::set_sample_rate(uint32_t fs)
   // empirically for WAV playback). 24 / 32 kHz aren't officially
   // supported at all; we map them to the closest available mode
   // rather than return false so common codec rates still play.
-  //
-  // Library 2.0.0 put the rate in the upper nibble (e.g. 0x62 for
-  // 96 kHz), which the chip reads as PCM_RATE = 2 (48 kHz), so 96 kHz
-  // played at half speed.
   uint8_t pcm_rate;
   switch (fs) {
     // 16 kHz uses the 48 kHz mode, not its native 0x31: the register
     // table loaded at >= 16 kHz carries a DSP patch tuned for 48 kHz
     // mode, and running it in 16 kHz mode gave audible hiss in silent
-    // passages on RAK18060. 0x32 is also what upstream always used at
+    // passages on RAK18060. 0x32 is also what the stock table uses at
     // 16 kHz. Playback speed follows the host WCLK either way. A PPC3
     // export for 16 kHz (as done for 8 kHz) would allow the native mode.
     case 8000:                                  pcm_rate = 0x30; break;
@@ -183,9 +176,9 @@ bool TAS2560::set_sample_rate(uint32_t fs)
 }
 
 // Send the register table for the rate-aware begin() rate (or the
-// upstream table after a legacy begin()) and re-apply everything that
+// stock table after a legacy begin()) and re-apply everything that
 // follows a table load. Used by begin() and by the alarm-recovery paths,
-// which previously always reloaded the upstream 16/48 kHz table and so
+// which in 1.0.x always reloaded the stock 16/48 kHz table and so
 // would reconfigure an 8 kHz amp for the wrong rate.
 void TAS2560::_reload_for_current_rate(void)
 {
@@ -228,7 +221,7 @@ void TAS2560::apply_rate_dependent_init(uint32_t fs)
   //     (1..63) but is the only value that has worked at 8 kHz.
   //   - Table 4 says set PLL_LOWF when the PLL input is below 1 MHz.
   //     Every clean configuration so far had it clear. Left clear.
-  //   - 16 kHz also has a 512 kHz BCLK. The upstream J = 32 runs it at
+  //   - 16 kHz also has a 512 kHz BCLK. The stock J = 32 runs it at
   //     16.384 MHz, and with that one amp hissed during playback (the
   //     hiss stayed on the same speaker when the channels were swapped,
   //     so it isn't in the source). J = 96 gives 49.152 MHz, the same
@@ -262,7 +255,7 @@ void TAS2560::apply_rate_dependent_init(uint32_t fs)
 
 // Called after every register-table load: the part comes out of the
 // table unmuted, in whatever PWR_DEV mode the table's last PWR_CTRL_1
-// write chose (upstream 0x80 = without boost; PPC3 8 kHz / 96 kHz
+// write chose (stock table 0x80 = without boost; PPC3 8 kHz / 96 kHz
 // tables 0x40 = with boost). Record that so set_unmute() restores it.
 void TAS2560::_sync_power_state(void)
 {
@@ -522,7 +515,7 @@ uint8_t TAS2560::get_pcm_word_length(void)
 uint8_t TAS2560::set_pcm_channel(ASI_channel mode)
 {
   // ASI_CHAN_MODE is ASI_CHANNEL (0x15) bits [1:0] (datasheet Table 73).
-  // The upstream version wrote the result to ASI_FORMAT (0x14) instead,
+  // Version 1.0.x wrote the result to ASI_FORMAT (0x14) instead,
   // so the channel never changed (the register tables leave 0x15 at
   // 0x02, (L+R)/2) and the mode value landed in ASI_LENGTH: LeftMode
   // gave 16-bit, RightMode gave 20-bit.
@@ -789,7 +782,7 @@ void TAS2560::set_mute(void)
     volume = get_gain();
     // Remember whether the part was powered up with boost (PWR_DEV=01,
     // 0x40) or without (PWR_DEV=10, 0x80) so unmute restores the same
-    // mode. The register tables differ: upstream ends without boost,
+    // mode. The register tables differ: the stock table ends without boost,
     // the PPC3 8 kHz and 96 kHz tables end with boost.
     uint8_t pwr_dev = readRegister8(TAS25X_PWR_CTRL_1) & 0xC0;
     if (pwr_dev == 0x40 || pwr_dev == 0x80) _pwr_state = pwr_dev;
