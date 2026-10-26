@@ -1,0 +1,11 @@
+Recording guidelines (matters more than the code)
+Concatenated speech sounds awful if recordings don't match. Rules:
+
+One voice, one session, one mic, one room. Re-recording later for new words = audible mismatch.
+Same loudness — normalize all files to the same RMS (not peak).
+Trim leading/trailing silence aggressively — concatenation gaps come from silence inside files, not from gaps you add.
+Flat intonation on word-bank entries. Numbers and nouns recorded with sentence-final falling tone sound wrong mid-sentence. Record them with neutral, slightly-rising prosody.
+Phrases get natural intonation — record them as you'd actually say them.
+16 kHz, 16-bit mono PCM WAV. Plenty for voice; halves SD bandwidth vs 44.1 kHz.
+A short ~50–100 ms silence file lets you insert micro-gaps between concatenated words for clarity.
+This is the part I'd recommend not skimping on. A weekend with a USB mic and Audacity (record → noise-reduce → normalize → trim → batch-export) gives you a permanent asset.
