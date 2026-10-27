@@ -62,8 +62,10 @@ void setup()
     Serial.printf("TAS2560 rigth init failed\r\n");
   } 
 
-  AMP_Left.set_pcm_channel(LeftMode);
-  AMP_Right.set_pcm_channel(RightMode);
+  // The I2S stream is mono (one channel), so both amps play the mix of
+  // the two slots, (L+R)/2, as library 1.0.x always did.
+  AMP_Left.set_pcm_channel(LeftRightMode);
+  AMP_Right.set_pcm_channel(LeftRightMode);
   
   audio_length = sizeof(sound_buff)/4;   //The DMA transmit data width is 32 bits contains 4 bytes data 
   Serial.println("start play");

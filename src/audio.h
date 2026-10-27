@@ -64,7 +64,16 @@ extern "C"
 #define CYBERON_FILEPATH    "Cyberon_License"  
 #elif defined (_VARIANT_RAK3112_)
 #define CYBERON_FILEPATH    "Cyberon_License"
-#define Stereo    2
+// The RAK4631 branch of this library uses a `Stereo` macro (see other examples), but no RAK3112
+// code references it and the name collides with common user variable
+// names. Removed. Use i2s_slot_mode_t I2S_SLOT_MODE_STEREO (or the
+// integer literal 2) instead.
+//
+// BUFFER_SIZE no longer sets the DMA size. The default DMA buffer is
+// ESP_I2S's 6 x 240 frames (as in 1.0.x); change it with
+// PDM.setBufferSize(size) / I2S.setBufferSize(size) before begin().
+// Kept for source compatibility with sketches that allocate
+// `short sampleBuffer[BUFFER_SIZE]`.
 #define BUFFER_SIZE   1920
 #endif
 

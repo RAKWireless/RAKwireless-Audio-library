@@ -21,7 +21,6 @@
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
-#include "PDM.h"
 
 File new_audio_file;
 // default number of output channels
@@ -81,6 +80,13 @@ void setup() {
     SD.remove("/record.wav");
   }
 
+  // ~0.5 s of mic buffering (16000 bytes at 16 kHz mono) so audio isn't
+  // lost while an SD card write stalls. Must be set before PDM.begin().
+  PDM.setBufferSize(16000);
+  // The RAK18030's raw level is low (speech at arm's length peaks at a
+  // few hundred out of 32767), so apply the maximum software gain, x15.
+  // Lower it (0..80) if loud sounds clip.
+  PDM.setGain(80);
   // initialize PDM with:
   if (!PDM.begin(channels, frequency)) {
     Serial.println("Failed to start PDM!");
@@ -260,44 +266,40 @@ void microphone_record(const char* song_name, uint32_t duration) {
   digitalWrite(LED_BLUE, HIGH);
   digitalWrite(LED_GREEN, HIGH);
   Serial.println("Recording started");
-  while (counter < data_size)  
+  while (counter < data_size)
   {
-    // Check for file size overflow
-    if (counter > data_size) {
-      Serial.println("File is corrupted. data_size must be multiple of fifo_size. Please modify fifo_size");
-      break;
-    }
-    // Read data from microphone
+    // Read data from microphone. PDM.read() returns the bytes that are
+    // ready (up to fifo_size), or 0 if none are yet; only those bytes
+    // are valid.
     int bytes_read = PDM.read((char*)buf, fifo_size);
-//    if (bytes_read > 0)
-//    {
-//      for (int i = 0; i < fifo_size; i++)
-//      {
-//        buf[i] = buf[i] << 1; //2x the original volume
-//      }
-//    }
+    if (bytes_read <= 0)
+    {
+      delay(1);
+      continue;
+    }
 
+    size_t write_size = bytes_read;
     if (channels == 2)
     {
-      const size_t write_size = bytes_read >> 1;
-      uint8_t* write_buf = (uint8_t*)malloc(write_size);
-      for (int i = 0; i < (write_size >> 1); i++) //Convert stereo data to mono
+      // Convert stereo to mono in place: keep the left sample of each pair
+      int16_t* samples = (int16_t*)buf;
+      const size_t frames = bytes_read / 4;
+      for (size_t i = 0; i < frames; i++)
       {
-        write_buf[i * 2] = buf[i * 4];
-        write_buf[i * 2 + 1] = buf[i * 4 + 1];
+        samples[i] = samples[i * 2];
       }
-      // Save data to SD card
-      audio_file.write(write_buf, write_size);
-      // Increment the counter
-      counter += write_size;
-      free(write_buf);
+      write_size = frames * 2;
     }
-    else
+
+    // Don't write past the size given in the WAV header
+    if (write_size > data_size - counter)
     {
-      audio_file.write(buf, fifo_size);
-      // Increment the counter
-      counter += fifo_size;
+      write_size = data_size - counter;
     }
+    // Save data to SD card
+    audio_file.write(buf, write_size);
+    // Increment the counter
+    counter += write_size;
   }
   digitalWrite(LED_BLUE, LOW);
   digitalWrite(LED_GREEN, LOW);

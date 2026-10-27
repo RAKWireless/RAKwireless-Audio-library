@@ -484,6 +484,9 @@ void play_wav(const char* file)
       get_flie_info();
       I2S.setSampleBit(g_wav_head.singleBitsPerSample);
       I2S.begin(g_wav_head.channels, g_wav_head.sampleRate);
+      // Stereo WAV: one channel per amp. Mono: both amps play (L+R)/2.
+      AMP_Left.set_pcm_channel(g_wav_head.channels == 2 ? LeftMode : LeftRightMode);
+      AMP_Right.set_pcm_channel(g_wav_head.channels == 2 ? RightMode : LeftRightMode);
       play_task();
     }
     else

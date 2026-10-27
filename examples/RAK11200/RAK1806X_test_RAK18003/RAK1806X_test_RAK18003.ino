@@ -58,7 +58,9 @@ void setup() {
   }
 
   AMP_Left.set_gain(15);  //Gain setting range 0-15 db
-  AMP_Left.set_pcm_channel(LeftMode);
+  // Stereo: one channel per amp. Mono: both amps play the mix of the
+  // two slots, (L+R)/2, as library 1.0.x always did.
+  AMP_Left.set_pcm_channel(channels == 2 ? LeftMode : LeftRightMode);
   AMP_Left.set_mute();
 
   if (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
@@ -67,7 +69,7 @@ void setup() {
   }
 
   AMP_Right.set_gain(15); //Gain setting range 0-15 db
-  AMP_Right.set_pcm_channel(RightMode);
+  AMP_Right.set_pcm_channel(channels == 2 ? RightMode : LeftRightMode);
   AMP_Right.set_mute();
   rak_audio.setVolume(6);   //The volume level can be set to 0-21
   pinMode(WB_IO1, INPUT);

@@ -55,8 +55,10 @@ void setup() {
     Serial.printf("TAS2560 rigth init failed\r\n");
   } 
 
-  AMP_Left.set_pcm_channel(LeftMode);
-  AMP_Right.set_pcm_channel(RightMode);
+  // Stereo: one channel per amp. Mono: both amps play the mix of the
+  // two slots, (L+R)/2, as library 1.0.x always did.
+  AMP_Left.set_pcm_channel(channels == 2 ? LeftMode : LeftRightMode);
+  AMP_Right.set_pcm_channel(channels == 2 ? RightMode : LeftRightMode);
  
   I2S.setSampleBit(16); 
   I2S.begin(channels, frequency);

@@ -11,6 +11,9 @@
  
 #include "audio.h"
 
+#define DSPG_USE_MODEL  MODEL_GROUP1  //select voice model can be MODEL_GROUP1、MODEL_GROUP2、MODEL_GROUP3、MODEL_GROUP4
+#define COMMAND_GROUP_CHOOSE  1   //the number must be the same as the number of group selected,eg: 1 MODEL_GROUP1; 2 MODEL_GROUP2; 3 MODEL_GROUP3; 4 MODEL_GROUP4
+
 char cmd_string[40]="";
 int cmd_id = 0;
 uint32_t trigger_count = 0;
@@ -35,7 +38,8 @@ void setup() {
   while(!Serial);     
 
   Serial.println("waiting DSPG init ...");
-  while(DSPG_USER.begin())
+  DSPG_USER.SetActiveCommandGroup(COMMAND_GROUP_CHOOSE);  //it is necessary choose one voice model group before init DSPG.
+  while(DSPG_USER.begin(DSPG_USE_MODEL, sizeof(DSPG_USE_MODEL)))
   {
     Serial.println("Please check !!!");
     delay(1000);
@@ -50,7 +54,7 @@ void setup() {
   DSPG_USER.detectedCallback(EventProcess);  
   DSPG_USER.readIoState();  //read the RAK18003 chip IO state
   Serial.printf("init ok\r\n");
-  DSPG_USER.echoCommands();
+  DSPG_USER.echoCommands(COMMAND_GROUP_CHOOSE);
   int_flag = 0; 
   digitalWrite(LED_BLUE, HIGH);
   digitalWrite(LED_GREEN, HIGH);

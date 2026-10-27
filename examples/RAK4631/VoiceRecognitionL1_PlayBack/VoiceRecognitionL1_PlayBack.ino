@@ -282,13 +282,15 @@ void AMP_init()
     Serial.printf("TAS2560 left init failed\r\n");
     delay(500);
   }
-  AMP_Left.set_pcm_channel(LeftMode);
+  // The I2S stream is mono (one channel), so both amps play the mix of
+  // the two slots, (L+R)/2, as library 1.0.x always did.
+  AMP_Left.set_pcm_channel(LeftRightMode);
   if (!AMP_Right.begin(AMP_RIGTT_ADDRESS))
   {
     Serial.printf("TAS2560 rigth init failed\r\n");
     delay(500);
   }
-  AMP_Right.set_pcm_channel(RightMode);
+  AMP_Right.set_pcm_channel(LeftRightMode);
 }
 void tx_irq()  ///< Pointer to the buffer with data to be sent.
 {

@@ -37,6 +37,14 @@ eg:C:\Users\user\AppData\Local\Arduino15\packages\esp32\hardware\esp32\3.3.6\var
 
 ### 1.3.PDM library
 
+> **Note (2.0.0):** `PDM.zip` has been removed and nothing needs
+> installing into the BSP; ignore the steps below. The PDM and I²S
+> drivers in `src/esp32-s3/` were rewritten, and the zip held the old
+> version (it declared `I2S` with the old `I2SClass` type). If you
+> installed it earlier, remove it from the BSP `libraries` folder.
+> `audio.h` already includes the right `PDM.h`. See the main `README.md`, section
+> "RAK3112 (ESP32-S3) — extended API and fixes".
+
 PDM.h/PDM.cpp has been added to the src/esp32-s3 directory, and conditional compilation has been added to src/audio.h. PDM.zip is also provided; if you encounter any problems, you can manually add it to the ESP32 BSP path (..\packages\esp32\\..\libraries).
 
 Add the PDM library to ..\packages\esp32\\..\libraries.Windows:
@@ -76,6 +84,11 @@ sample[1] = sample[0];
 ```
 
 #### 2.3 PlayBackFromSD
+
+> **Note (2.0.0):** the per-sample loop below was replaced. It
+> couldn't keep up above about 44 kHz, and writing the `Gain()` result
+> directly swapped left and right. The example now reads and writes 4 KB
+> blocks and mutes the amps before `I2S.end()`.
 
 Fixed the issue where volume could not be adjusted. Added a software gain function to control volume.
 

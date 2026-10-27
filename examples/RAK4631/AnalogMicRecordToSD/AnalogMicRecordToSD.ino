@@ -3,8 +3,8 @@
    @author rakwireless.com
    @brief This example shows how to record sound to SD card.
    First, you need to prepare the hardware module and SD card.
-    Step 1: Compile and download the example to RAK11200.
-    Part 2: Reset RAK11200 and open the serial port.
+    Step 1: Compile and download the example to RAK4631.
+    Part 2: Reset RAK4631 and open the serial port.
     Part 3: When the serial port prints out "Recording started", the microphone starts to collect sound,
             and the default sampling time is 8 seconds.
     Step 4: When the serial port prints "Recording finished", the microphone completes the recording and
@@ -18,10 +18,8 @@
 */
 
 #include "audio.h"
-#include <driver/i2s.h>
-#include "FS.h"
-#include "SD.h"
 #include "SPI.h"
+#include "SD.h"     //http://librarymanager/All#SD
 
 File new_audio_file;
 // default number of output channels
@@ -30,6 +28,17 @@ static const int channels = 1;
 static const int frequency = 16000;
 #define BIT_PER_SAMPLE 16
 #define RECORD_TIME    8    //recording time default 8 seconds
+
+// I2S DMA block, in 32-bit words. The mic is read in stereo (one 32-bit word = L + R 16-bit
+// samples) and the left channel is written to the file, so one block = I2S_DATA_BLOCK_WORDS
+// mono samples (128 ms at 16 kHz). Long enough to ride out slow SD card writes.
+#define I2S_DATA_BLOCK_WORDS    2048
+
+uint32_t readbuff[I2S_DATA_BLOCK_WORDS] = {0};
+int16_t monoBuff[I2S_DATA_BLOCK_WORDS] = {0};
+volatile uint32_t rx_blocks = 0;   // incremented by the I2S RX interrupt per filled block
+
+void rx_irq();
 
 NAU85L40B   MIC(0x1D);
 
@@ -77,8 +86,9 @@ void setup() {
   digitalWrite(LED_GREEN, LOW);
 
   SD_CS_low();  //enable the SPI CS
-  if (!SD.begin(SS, SPI, 8000000, "/sd", 5)) { // Start access to the SD.
+  if (!SD.begin(32000000, SS)) { // Start access to the SD.
     Serial.println("Card Mount Failed");
+    return;
   }
 
   if (SD.exists("/record.wav")) {
@@ -86,8 +96,10 @@ void setup() {
     SD.remove("/record.wav");
   }
 
-  // initialize I2S with:
-  I2S.begin(channels, frequency, BIT_PER_SAMPLE);
+  // initialize I2S: stereo 16-bit, the left channel is kept when writing the file
+  I2S.RxIRQCallBack(rx_irq);
+  I2S.begin(Stereo, frequency, BIT_PER_SAMPLE);
+  I2S.setSize(I2S_DATA_BLOCK_WORDS);
 
   microphone_record("/record.wav", RECORD_TIME);    //the default record file name is "record.wav".
   SD_CS_high(); //disable the SPI CS
@@ -242,56 +254,61 @@ bool create_wav_file(const char* song_name, uint32_t duration, uint16_t num_chan
   new_audio_file.close();
   return true;
 }
+void rx_irq()
+{
+  rx_blocks++;
+}
 void microphone_record(const char* song_name, uint32_t duration) {
- 
-  //Extract mono data from stereo
+
   if (!create_wav_file(song_name, duration, channels, frequency, BIT_PER_SAMPLE)) {
     Serial.println("Error during wav header creation");
     return;
   }
-  // Buffer to receive data from microphone
-  const size_t fifo_size = 1024;
-  uint8_t* buf = (uint8_t*)malloc(fifo_size);
-
-  // Open created .wav file in append+binary mode to add PCM data
-  File audio_file = SD.open(song_name, FILE_APPEND);
-  if (audio_file == NULL) {
-    Serial.println("Failed to create file");
+  // FILE_WRITE appends, so the PCM data goes after the header
+  File audio_file = SD.open(song_name, FILE_WRITE);
+  if (!audio_file) {
+    Serial.println("Failed to open file");
     return;
   }
   // data size in bytes - > this amount of data should be recorded from microphone
-  uint32_t data_sample = frequency * BIT_PER_SAMPLE * channel * duration / 8;
+  uint32_t data_size = frequency * BIT_PER_SAMPLE * channels * duration / 8;
 
-  // Record until "file_size" bytes have been read from mic.
   uint32_t counter = 0;
+  uint32_t blocks_read = 0;
+  uint32_t blocks_lost = 0;
   digitalWrite(LED_BLUE, HIGH);
   digitalWrite(LED_GREEN, HIGH);
+  rx_blocks = 0;
+  I2S.start();
   Serial.println("Recording started");
-  while (counter != data_sample) {
-    // Check for file size overflow
-    if (counter > data_sample) {
-      Serial.println("File is corrupted. data_sample must be multiple of fifo_size. Please modify fifo_size");
-      break;
-    }
-    // Read data from microphone
-    int bytes_read = I2S.read(buf, fifo_size);
-    if (bytes_read > 0)
+  while (counter < data_size) {
+    uint32_t pending = rx_blocks;
+    if (pending == blocks_read)
     {
-      for (int i = 0; i < fifo_size; i++)
-      {
-        buf[i] = buf[i] << 1; //2x the original volume
-      }
+      continue;   // wait for the next block from the microphone
     }
-    audio_file.write(buf, fifo_size);
-    // Increment the counter
-    counter += fifo_size;
+    // the double buffer only holds the latest block; any others were overwritten
+    blocks_lost += pending - blocks_read - 1;
+    blocks_read = pending;
 
+    I2S.read(&readbuff, sizeof(readbuff));
+    for (int i = 0; i < I2S_DATA_BLOCK_WORDS; i++)
+    {
+      monoBuff[i] = ((int16_t const *)&readbuff[i])[0];  // left channel
+    }
+    uint32_t to_write = min((uint32_t)sizeof(monoBuff), data_size - counter);
+    audio_file.write((uint8_t *)monoBuff, to_write);
+    counter += to_write;
   }
+  I2S.stop();
+  I2S.end();
   digitalWrite(LED_BLUE, LOW);
   digitalWrite(LED_GREEN, LOW);
   audio_file.close();
   delay(200);
   Serial.println("Recording finished");
-  I2S.end();
-  free(buf);
+  if (blocks_lost)
+  {
+    Serial.printf("Warning: %u audio blocks were lost (SD card too slow)\r\n", (unsigned)blocks_lost);
+  }
 }
